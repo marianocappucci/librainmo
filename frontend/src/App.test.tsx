@@ -20,6 +20,9 @@ function servirComo(rol: string | null, terminos: object = TERMINOS_AL_DIA) {
     'GET /auth/me': rol ? json(USUARIO(rol)) : error(401, 'not authenticated'),
     'GET /terminos': json(terminos),
     'GET /api/usuarios': json([]),
+    'GET /api/propiedades': json([]),
+    'GET /api/contratos': json([]),
+    'GET /api/clientes': json([]),
   })
 }
 
@@ -66,7 +69,7 @@ describe('Sesión y Términos', () => {
 })
 
 describe('El menú sigue la matriz de roles', () => {
-  const TODAS = ['Inicio', 'Usuarios', 'Actividad']
+  const TODAS = ['Inicio', 'Propiedades', 'Contratos', 'Usuarios', 'Actividad']
 
   async function menuDe(rol: string) {
     servirComo(rol)
@@ -79,8 +82,8 @@ describe('El menú sigue la matriz de roles', () => {
     expect(await menuDe('admin')).toEqual(TODAS)
   })
 
-  it('el operador ve sólo Inicio: la administración de la instancia es del administrador', async () => {
-    expect(await menuDe('operador')).toEqual(['Inicio'])
+  it('el operador ve el día a día —Inicio, Propiedades y Contratos— y no la administración de la instancia', async () => {
+    expect(await menuDe('operador')).toEqual(['Inicio', 'Propiedades', 'Contratos'])
   })
 
   it('muestra el rol con su nombre legible, no el código', async () => {
@@ -95,5 +98,28 @@ describe('El menú sigue la matriz de roles', () => {
     servirComo('admin')
     montar('/inicio')
     await waitFor(() => expect(enMenu('Inicio')).toHaveAttribute('data-active', 'true'))
+  })
+})
+
+describe('Las pantallas de propiedades y contratos cuelgan del menú', () => {
+  it.each([
+    ['/propiedades', 'Propiedades'],
+    ['/contratos', 'Contratos'],
+    ['/contratos/nuevo', 'Nuevo contrato'],
+  ])('%s abre «%s», con la entrada del menú marcada', async (ruta, titulo) => {
+    servirComo('operador')
+    montar(ruta)
+    expect(await screen.findByRole('heading', { name: titulo })).toBeInTheDocument()
+    // Los detalles (`/contratos/:id`, `/propiedades/:id`) heredan la entrada de su listado.
+    const entrada = ruta.startsWith('/propiedades') ? 'Propiedades' : 'Contratos'
+    await waitFor(() => expect(enMenu(entrada)).toHaveAttribute('data-active', 'true'))
+  })
+
+  it('una ficha de contrato deja marcada la entrada «Contratos» del menú', async () => {
+    const api = servirComo('operador')
+    api.responder('GET /api/contratos/5', json({ id: 5, numero: 'C-000005', estado: 'vigente', propiedad_id: 2, propiedad_codigo: 'P-000002', propiedad_direccion: 'Avenida Ficticia 456', inquilino_id: 3, inquilino_nombre: 'Carla Ficticia', fecha_inicio: '2026-03-01', fecha_fin: '2028-02-29', fecha_rescision: null, moneda: 'ARS', dia_vencimiento: 10, dias_gracia: 0, metodo_ajuste: 'fijo', indice_ajuste: null, indice_ajuste_nombre: null, porcentaje_ajuste: null, periodicidad_ajuste: null, punitorio_tasa: null, punitorio_base: 'diaria', punitorio_para: 'inmobiliaria', comision_pct: '0.00', deposito: null, observaciones: null, importe_vigente: '450000.00', precio_vigente_desde: '2026-03-01', precios: [], garantias: [], conceptos: [] }))
+    montar('/contratos/5')
+    expect(await screen.findByRole('heading', { name: 'C-000005' })).toBeInTheDocument()
+    expect(enMenu('Contratos')).toHaveAttribute('data-active', 'true')
   })
 })

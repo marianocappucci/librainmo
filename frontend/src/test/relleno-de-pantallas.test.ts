@@ -18,8 +18,10 @@ describe('las pantallas no agregan relleno propio arriba', () => {
 
   it('🔴 el control — el guard midió pantallas (un parser que devuelve cero sería un falso verde)', () => {
     expect(r.archivos).toBeGreaterThan(0)
-    expect(r.pantallas).toBeGreaterThan(0)
-    expect(r.raices).toBeGreaterThan(0)
+    // Las pantallas propias de hoy: Inicio, Propiedades, PropiedadDetalle, Contratos, ContratoNuevo, ContratoEditar, ContratoDetalle, Login,
+    // Usuarios y Logs. Si el parser deja de verlas, esto avisa en vez de dar verde con cero.
+    expect(r.pantallas).toBeGreaterThanOrEqual(10)
+    expect(r.raices).toBeGreaterThanOrEqual(11)
   })
 
   it('ninguna raíz de pantalla lleva p-N, py-N, pt-N, mt-N ni my-N', () => {

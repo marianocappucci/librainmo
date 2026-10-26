@@ -16,10 +16,13 @@ const SRC = join(process.cwd(), 'src')
 describe('los desplegables de datos se buscan escribiendo', () => {
   const r = auditarSelects(SRC)
 
-  // 🟡 Hoy no hay ningún desplegable de datos: el control exige sólo que el guard haya leído archivos. Con el primero (propiedades,
-  // índices de ajuste…) se sube el piso a `desplegables > 0`.
-  it('🔴 el control — el guard leyó los fuentes (un parser que no lee nada sería un falso verde)', () => {
+  // Desplegables de DATOS que hay hoy: la propiedad del contrato (`CampoBuscable` → `SelectBuscable`), y los de cliente (`SelectCliente`, que
+  // los arma sobre `SelectBuscable` del kit). Los de lista cerrada (tipo, estado, moneda, método de ajuste…) pasan todos por UN solo
+  // `<Select>` marcado `select-cerrado:` (`components/SelectCerrado.tsx`): `desplegables` es 1 y `marcados` también.
+  it('🔴 el control — el guard leyó los fuentes y encontró el desplegable cerrado marcado (un parser que no lee nada sería un falso verde)', () => {
     expect(r.archivos).toBeGreaterThan(0)
+    expect(r.desplegables).toBeGreaterThanOrEqual(1)
+    expect(r.marcados).toBeGreaterThanOrEqual(1)
   })
 
   it('ningún desplegable de datos (ni uno de más de 8 opciones fijas) deja de ser SelectBuscable', () => {
@@ -69,7 +72,11 @@ describe('un SelectBuscable con un centinela propio no ofrece la ×', () => {
   const todos = fuentesTsx(SRC).flatMap((ruta) =>
     usosDeSelectBuscable(readFileSync(ruta, 'utf8')).map((u) => ({ ...u, archivo: relative(SRC, ruta).replaceAll('\\', '/') })))
 
-  // 🟡 Sin desplegables todavía: `todos` puede estar vacío. Los dos controles de abajo prueban el predicado, que es lo que vigila.
+  // `todos` tiene el `SelectBuscable` de `CampoBuscable` (la propiedad del contrato). Los dos controles de abajo prueban el predicado, que es lo que vigila.
+  it('🔴 el control — hay usos de SelectBuscable que mirar', () => {
+    expect(todos.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('🔴 el control — el predicado marca un centinela con `limpiable` y deja pasar los demás usos (un guard que no se pone rojo no vigila nada)', () => {
     const centinela = "<SelectBuscable value={v} onChange={f} opciones={[{ value: TODOS, label: 'Todos' }, ...xs]}"
     expect(pideLaCruzConUnCentinela(`${centinela} limpiable />`)).toBe(true)

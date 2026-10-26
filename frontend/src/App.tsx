@@ -2,9 +2,15 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Layout } from '@/components/Layout'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { ContratoDetalle } from '@/pages/ContratoDetalle'
+import { ContratoEditar } from '@/pages/ContratoEditar'
+import { ContratoNuevo } from '@/pages/ContratoNuevo'
+import { Contratos } from '@/pages/Contratos'
 import { Inicio } from '@/pages/Inicio'
 import { Login } from '@/pages/Login'
 import { Logs } from '@/pages/Logs'
+import { PropiedadDetalle } from '@/pages/PropiedadDetalle'
+import { Propiedades } from '@/pages/Propiedades'
 import { Usuarios } from '@/pages/Usuarios'
 
 // Exportado para el test de ruteo: lo que hay que poder montar es ESTO, con un `MemoryRouter` alrededor. `App` trae su propio
@@ -24,6 +30,12 @@ export function Ruteo() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/inicio" element={<Inicio />} />
+        <Route path="/propiedades" element={<Propiedades />} />
+        <Route path="/propiedades/:id" element={<PropiedadDetalle />} />
+        <Route path="/contratos" element={<Contratos />} />
+        <Route path="/contratos/nuevo" element={<ContratoNuevo />} />
+        <Route path="/contratos/:id" element={<ContratoDetalle />} />
+        <Route path="/contratos/:id/editar" element={<ContratoEditar />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/logs" element={<Logs />} />
         {/* Las rutas no llevan guarda de rol: el permiso lo decide el servidor, y una ruta escondida que igual carga datos no protege

@@ -9,6 +9,7 @@
 // ofrece, porque un link que da 403 es peor que no tenerlo. El permiso lo decide
 // el servidor; esto sólo evita ofrecer lo que va a fallar.
 import { Outlet } from 'react-router-dom'
+import { Building2, FilePenLine } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { ICONOS } from 'libra-ui/iconos-identidad'
 
@@ -31,9 +32,18 @@ const Cascaron = createLayout<Usuario>({
   wordmarkClassName: `${WORDMARK} text-[15px]/[17px]`,
   homeTo: '/inicio',
   navSections: [
-    // Sin label: es lo del día a día. Las entradas de dominio (propiedades, contratos, cobros…) se suman acá en la fase 1.
+    // Sin label: es lo del día a día. Las entradas de dominio se suman acá (cobros y liquidaciones, en las próximas fases).
+    //
+    // Propiedades y Contratos no están en el catálogo de íconos de identidad del kit (`libra-ui/iconos-identidad`): son conceptos de este
+    // producto y, según su propia regla, no entran hasta que un segundo producto los necesite. Llevan íconos de lucide que no usa ningún
+    // otro concepto del catálogo (`Building2`, `FilePenLine`: el mismo de los contratos de LibraDesk).
     {
-      items: [{ to: '/inicio', label: 'Inicio', icon: ICONOS.dashboard }],
+      items: [
+        { to: '/inicio', label: 'Inicio', icon: ICONOS.dashboard },
+        // `activoEn`: la ficha de una propiedad o de un contrato (`/propiedades/3`, `/contratos/5/editar`) deja marcada la entrada de su listado.
+        { to: '/propiedades', label: 'Propiedades', icon: Building2, activoEn: ['/propiedades'] },
+        { to: '/contratos', label: 'Contratos', icon: FilePenLine, activoEn: ['/contratos'] },
+      ],
     },
     {
       label: 'Administración',

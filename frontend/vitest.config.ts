@@ -30,6 +30,10 @@ export default mergeConfig(
       env: { TZ: 'America/Argentina/Buenos_Aires' },
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      // Las pantallas con formularios largos (el alta de un contrato, el editor de titulares) tardan ~1,5 s en jsdom si corren solas; con
+      // todos los archivos en paralelo y un CI más lento, el piso de 5 s de Vitest las cortaba (medido el 2026-10-26). 20 s no esconde
+      // un test colgado —el default sigue siendo un error—, sólo deja de confundir lentitud con falla.
+      testTimeout: 20_000,
     },
   }),
 )

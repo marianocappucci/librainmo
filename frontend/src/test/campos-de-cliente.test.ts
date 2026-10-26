@@ -9,9 +9,11 @@
 // ADR-002 y ADR-004), por eso las palabras. Un campo de cliente es `SelectCliente`. Un *filtro* o un campo que no crea nada se marca con
 // `cliente-sin-alta: <motivo>` en su renglón o en los tres de arriba.
 //
-// Los campos que hay hoy (2026-10-26, tanda 1 del dominio): el **inquilino** del contrato (`FormularioDeContrato`), cada fila del editor
-// de **titulares** de una propiedad (`EditorDeTitulares`) y el **garante** de una garantía (`GarantiasDelContrato`). El piso es de 3: si un
-// campo de cliente deja de ser `SelectCliente`, o desaparece, esto se pone rojo y hay que decidirlo a propósito.
+// Los campos que hay hoy (2026-10-26, tandas 1 y 2 del dominio): el **inquilino** del contrato (`FormularioDeContrato`), cada fila del
+// editor de **titulares** de una propiedad (`EditorDeTitulares`), el **garante** de una garantía (`GarantiasDelContrato`) y el
+// **propietario** de una liquidación (`LiquidacionNueva`); más un *filtro* que no crea nada, marcado `cliente-sin-alta` (el propietario del
+// listado de `Liquidaciones`). El piso es de 4 con alta y 1 marcado: si un campo de cliente deja de ser `SelectCliente`, o desaparece,
+// esto se pone rojo y hay que decidirlo a propósito.
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { auditarCamposDeCliente, describirCamposSinAlta } from 'libra-ui/auditoria-de-clientes'
@@ -21,17 +23,23 @@ const SRC = join(process.cwd(), 'src')
 describe('todo campo donde se elige un inquilino, un propietario o un garante ofrece el alta', () => {
   const r = auditarCamposDeCliente(SRC, { palabras: ['client', 'inquilino', 'propietario', 'titular', 'garante', 'tenant', 'owner'] })
 
-  it('🔴 el control — el guard leyó los fuentes y encontró los tres campos de cliente, todos con alta (un parser que devuelve cero sería un falso verde)', () => {
+  it('🔴 el control — el guard leyó los fuentes y encontró los campos de cliente con alta y el único filtro marcado (un parser que devuelve cero sería un falso verde)', () => {
     expect(r.archivos).toBeGreaterThan(0)
-    expect(r.campos).toBeGreaterThanOrEqual(3)
-    expect(r.conAlta).toBeGreaterThanOrEqual(3)
-    // Ninguno está exento por una marca: los tres dan de alta ahí mismo.
-    expect(r.marcados).toBe(0)
+    expect(r.conAlta).toBeGreaterThanOrEqual(4)
+    // Sólo el filtro de propietario del listado de liquidaciones está exento por una marca; los demás dan de alta ahí mismo.
+    expect(r.marcados).toBe(1)
+    expect(r.campos).toBe(r.conAlta + r.marcados)
   })
 
-  it('🔴 los tres campos son el inquilino, el titular y el garante', () => {
-    const archivos = r.todos.filter((c) => c.componente === 'SelectCliente').map((c) => c.archivo).sort()
-    expect(archivos).toEqual(['components/EditorDeTitulares.tsx', 'components/FormularioDeContrato.tsx', 'components/GarantiasDelContrato.tsx'])
+  it('🔴 los campos con alta son el inquilino, el titular, el garante y el propietario de la liquidación; el filtro marcado, el de Liquidaciones', () => {
+    const con = r.todos.filter((c) => c.componente === 'SelectCliente').map((c) => c.archivo).sort()
+    expect(con).toEqual([
+      'components/EditorDeTitulares.tsx',
+      'components/FormularioDeContrato.tsx',
+      'components/GarantiasDelContrato.tsx',
+      'pages/LiquidacionNueva.tsx',
+    ])
+    expect(r.todos.filter((c) => c.marca).map((c) => c.archivo)).toEqual(['pages/Liquidaciones.tsx'])
   })
 
   it('ningún campo de cliente deja de ser SelectCliente, salvo los marcados `cliente-sin-alta: <motivo>`', () => {

@@ -72,9 +72,14 @@ describe('un SelectBuscable con un centinela propio no ofrece la ×', () => {
   const todos = fuentesTsx(SRC).flatMap((ruta) =>
     usosDeSelectBuscable(readFileSync(ruta, 'utf8')).map((u) => ({ ...u, archivo: relative(SRC, ruta).replaceAll('\\', '/') })))
 
-  // `todos` tiene el `SelectBuscable` de `CampoBuscable` (la propiedad del contrato). Los dos controles de abajo prueban el predicado, que es lo que vigila.
-  it('🔴 el control — hay usos de SelectBuscable que mirar', () => {
-    expect(todos.length).toBeGreaterThanOrEqual(1)
+  // `todos` tiene el `SelectBuscable` de `CampoBuscable` (la propiedad del contrato, el índice, el concepto de un cargo, la propiedad de un
+  // gasto) y los filtros de contrato, propiedad y propietario de Cuotas, Cobros, Gastos y Liquidaciones, todos con la opción «Todos» como
+  // centinela: es justamente el caso que vigila el predicado de abajo. Los dos controles siguientes prueban ese predicado.
+  it('🔴 el control — hay usos de SelectBuscable que mirar, y los de centinela están (el guard vigila algo)', () => {
+    expect(todos.length).toBeGreaterThanOrEqual(5)
+    expect(new Set(todos.map((u) => u.archivo))).toEqual(
+      new Set(['components/campos.tsx', 'pages/Cobros.tsx', 'pages/Cuotas.tsx', 'pages/Gastos.tsx', 'pages/Liquidaciones.tsx']),
+    )
   })
 
   it('🔴 el control — el predicado marca un centinela con `limpiable` y deja pasar los demás usos (un guard que no se pone rojo no vigila nada)', () => {

@@ -38,7 +38,14 @@ export function numeroArgentino(texto: string | null | undefined, decimales = 2)
 export function pesos(texto: string | null | undefined, moneda = 'ARS'): string {
   const n = numeroArgentino(texto, 2)
   if (n === '') return ''
-  return `${moneda === 'USD' ? 'US$' : '$'}${NBSP}${n}`
+  // Un importe negativo (un gasto que se descuenta) lleva el signo antes del símbolo: `-$ 1.200,00`.
+  const [signo, valor] = n.startsWith('-') ? ['-', n.slice(1)] : ['', n]
+  return `${signo}${moneda === 'USD' ? 'US$' : '$'}${NBSP}${valor}`
+}
+
+/** ¿Es un decimal negativo (`"-1200.00"`)? Los importes de plata no lo son salvo lo que se descuenta en una liquidación. */
+export function esNegativo(texto: string | null | undefined): boolean {
+  return !!texto && /^-\d/.test(texto.trim()) && /[1-9]/.test(texto)
 }
 
 /** `66,67 %`. Vacío si no hay valor. */
@@ -96,4 +103,22 @@ export function aCentesimas(decimal: string): number | null {
 export function deCentesimas(centesimas: number): string {
   const entero = Math.trunc(centesimas / 100)
   return `${entero}.${String(centesimas % 100).padStart(2, '0')}`
+}
+
+/** Un decimal con signo explícito para lo que va hacia arriba o hacia abajo (`+12,34 %`, `-1,50 %`); el cero va sin signo. */
+export function conSigno(texto: string | null | undefined, decimales = 2): string {
+  const n = numeroArgentino(texto, decimales)
+  if (n === '' || n.startsWith('-')) return n
+  return /[1-9]/.test(n) ? `+${n}` : n
+}
+
+/** La suma de importes de plata (texto decimal, hasta dos decimales) en centavos enteros, sin `float`. `null` si alguno no es válido. */
+export function sumarEnCentavos(importes: string[]): number | null {
+  let total = 0
+  for (const i of importes) {
+    const c = aCentesimas(i)
+    if (c === null) return null
+    total += c
+  }
+  return total
 }

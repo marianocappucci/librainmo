@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { aCentesimas, aDecimal, deCentesimas, importePositivo, numeroArgentino, pesos, porcentaje } from './importes'
+import { aCentesimas, aDecimal, conSigno, deCentesimas, esNegativo, importePositivo, numeroArgentino, pesos, porcentaje, sumarEnCentavos } from './importes'
 
 describe('numeroArgentino: el texto decimal de la API, con miles y coma', () => {
   it.each([
@@ -34,6 +34,15 @@ describe('pesos y porcentaje', () => {
     expect(pesos('450000.00')).toBe('$ 450.000,00')
     expect(pesos('1200.5', 'USD')).toBe('US$ 1.200,50')
     expect(pesos(null)).toBe('')
+  })
+
+  it('un importe negativo lleva el signo antes del símbolo, y el cero negativo no es negativo', () => {
+    expect(pesos('-1200.5')).toBe('-$\u00a01.200,50')
+    expect(pesos('-1200.5', 'USD')).toBe('-US$\u00a01.200,50')
+    expect(esNegativo('-1200.50')).toBe(true)
+    expect(esNegativo('-0.00')).toBe(false)
+    expect(esNegativo('1200.50')).toBe(false)
+    expect(esNegativo(null)).toBe(false)
   })
 
   it('porcentaje lleva el signo después del número', () => {
@@ -106,5 +115,21 @@ describe('centésimas: sumar porcentajes sin `float`', () => {
     expect(10.1 + 20.2 === 30.3).toBe(false)
     const suma = ['10.10', '20.20'].reduce((total, p) => total + (aCentesimas(p) ?? 0), 0)
     expect(suma).toBe(aCentesimas('30.30'))
+  })
+})
+
+describe('conSigno y sumarEnCentavos', () => {
+  it('el signo explícito de una variación: sube, baja o queda igual', () => {
+    expect(conSigno('12.340')).toBe('+12,34')
+    expect(conSigno('-1.5')).toBe('-1,50')
+    expect(conSigno('0.00')).toBe('0,00')
+    expect(conSigno(null)).toBe('')
+  })
+
+  it('suma importes en centavos sin `float`, y devuelve null si alguno no es válido', () => {
+    expect(sumarEnCentavos(['450000.00', '18500.50', '0.05'])).toBe(45_000_000 + 1_850_050 + 5)
+    expect(sumarEnCentavos(['10.10', '20.20'])).toBe(3030)
+    expect(sumarEnCentavos([])).toBe(0)
+    expect(sumarEnCentavos(['10.10', 'x'])).toBeNull()
   })
 })

@@ -36,11 +36,18 @@ describe('el icono del título sale del sidebar', () => {
     // Sin esto, los dos casos de arriba pasarían en verde si el parser dejara
     // de encontrar el Layout, el router o las pantallas: dos listas vacías
     // contra dos listas vacías. Es la forma en que este guard falló mientras se
-    // escribía. Los pisos son los del esqueleto (Inicio, Usuarios y Actividad en el menú; una sola pantalla propia):
+    // escribía. Los pisos son los de hoy: diez entradas en el menú (Inicio, Propiedades, Contratos, Cuotas, Cobros, Gastos, Liquidaciones,
+    // Fondos de terceros, Usuarios y Actividad) y veinte rutas bajo ellas, de las cuales dieciocho tienen título propio con su icono (Inicio,
+    // dos de Propiedades, cuatro de Contratos, cuatro de Cuotas, dos de Cobros, Gastos, tres de Liquidaciones y Fondos de terceros);
     // se suben con cada pantalla que entre.
     const { rutasDelNav, pantallas, conIcono } = auditarTitulos(SRC)
-    expect(rutasDelNav).toBeGreaterThanOrEqual(3)
-    expect(pantallas).toBeGreaterThanOrEqual(1)
-    expect(conIcono).toBeGreaterThan(0)
+    expect(rutasDelNav).toBeGreaterThanOrEqual(10)
+    expect(pantallas).toBeGreaterThanOrEqual(20)
+    expect(conIcono).toBeGreaterThanOrEqual(18)
+  })
+
+  it('🔴 las únicas rutas del menú sin título propio son las dos que rinde el kit entera (Usuarios y Actividad)', () => {
+    // Una pantalla propia nueva sin `TituloPantalla` caería acá y no se vería como «correcta» por no tener título que comparar.
+    expect(auditarTitulos(SRC).sinTitulo.map((d) => d.ruta).sort()).toEqual(['/logs', '/usuarios'])
   })
 })

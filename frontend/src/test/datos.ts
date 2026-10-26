@@ -4,7 +4,10 @@
  *
  * 🔴 Todo es ficticio: nombres, CUIT, direcciones. Nunca personas ni empresas reales (`CONVENTIONS.md`).
  */
-import type { ConceptoDelContrato, Contrato, ContratoDetalle, Propiedad } from '@/lib/api'
+import type {
+  Cobro, ConceptoDelContrato, Contrato, ContratoDetalle, Cuota, FondosDeTerceros, Gasto, IndiceDeAjuste, Liquidacion,
+  PrevisualizacionDeCuotas, PrevisualizacionDeLiquidacion, PropuestaDeAjuste, PropuestaDeCobro, Propiedad,
+} from '@/lib/api'
 
 export const ANA = { id: 1, name: 'Ana Inventada', cuit_dni: '27000000011', activo: 1 }
 export const BETO = { id: 2, name: 'Beto Ejemplo', cuit_dni: '20000000022', activo: 1 }
@@ -136,4 +139,289 @@ export const CONTRATO_FINALIZADO: ContratoDetalle = { ...CONTRATO_VIGENTE, id: 8
 export function resumen(c: ContratoDetalle): Contrato {
   const { precios: _precios, garantias: _garantias, conceptos: _conceptos, ...fila } = c
   return fila
+}
+
+/** `GET /api/contratos/ajustes/indices`: el catálogo de `libracore.indices_ajuste.INDICES`, con sus nombres de verdad. */
+export const INDICES: IndiceDeAjuste[] = [
+  { clave: 'icl', nombre: 'Índice para Contratos de Locación (ICL, base 30-06-2020 = 1)', periodicidad: 'diaria', se_baja_solo: true },
+  { clave: 'ipc', nombre: 'IPC nivel general nacional (INDEC, base diciembre 2016)', periodicidad: 'mensual', se_baja_solo: true },
+  { clave: 'ipc_variacion', nombre: 'Inflación mensual (variación % del IPC)', periodicidad: 'mensual', se_baja_solo: true },
+  { clave: 'cer', nombre: 'Coeficiente de Estabilización de Referencia (CER, base 02-02-2002 = 1)', periodicidad: 'diaria', se_baja_solo: true },
+  { clave: 'uva', nombre: 'Unidad de Valor Adquisitivo (UVA)', periodicidad: 'diaria', se_baja_solo: true },
+  { clave: 'dolar_a3500', nombre: 'Tipo de cambio mayorista de referencia (Comunicación A 3500)', periodicidad: 'diaria', se_baja_solo: true },
+  { clave: 'casa_propia', nombre: 'Coeficiente Casa Propia', periodicidad: 'mensual', se_baja_solo: false },
+]
+
+// ── Ajuste del alquiler (`GET /api/contratos/{id}/ajuste`) ──────────────
+
+export const AJUSTE_POR_INDICE: PropuestaDeAjuste = {
+  corresponde: true,
+  motivo: null,
+  fecha_ajuste: '2026-09-01',
+  proximo_ajuste: '2026-12-01',
+  precio_vigente: '450000.00',
+  precio_vigente_desde: '2026-06-01',
+  ajuste: {
+    metodo: 'indice',
+    importe_anterior: '450000.00',
+    importe_nuevo: '498750.00',
+    coeficiente: '1.1083333333',
+    variacion_pct: '10.83',
+    indice: 'icl',
+    indice_nombre: 'Índice para Contratos de Locación (ICL, base 30-06-2020 = 1)',
+    valores: [
+      { fecha: '2026-06-01', valor: '12.3456789', fuente: 'bcra' },
+      { fecha: '2026-08-29', valor: '13.68', fuente: 'bcra', fecha_pedida: '2026-09-01' },
+    ],
+  },
+}
+
+export const AJUSTE_POR_PORCENTAJE: PropuestaDeAjuste = {
+  ...AJUSTE_POR_INDICE,
+  ajuste: {
+    metodo: 'porcentaje',
+    importe_anterior: '450000.00',
+    importe_nuevo: '495000.00',
+    coeficiente: '1.1',
+    variacion_pct: '10.00',
+    porcentaje: '10.000',
+    periodos: 1,
+  },
+}
+
+export const AJUSTE_YA_HECHO: PropuestaDeAjuste = {
+  ...AJUSTE_POR_INDICE,
+  corresponde: false,
+  motivo: 'ya_ajustado',
+  ajuste: null,
+}
+
+/** El `detail` de «falta un valor del índice»: un objeto, no un texto. */
+export const FALTA_DE_INDICE = {
+  mensaje: 'Falta el valor del índice para ajustar este contrato.',
+  indice: 'casa_propia',
+  indice_nombre: 'Coeficiente Casa Propia',
+  fechas_faltantes: ['2026-08-01', '2026-09-01'],
+}
+
+// ── Cuotas, cobros, gastos, liquidaciones y fondos de terceros ──────────
+
+export const CUOTA_PENDIENTE: Cuota = {
+  id: 30,
+  contrato_id: 5,
+  numero_contrato: 'C-000005',
+  inquilino_id: 3,
+  inquilino_nombre: 'Carla Ficticia',
+  periodo_desde: '2026-11-01',
+  periodo_hasta: '2026-11-30',
+  fecha_emision: '2026-11-01',
+  fecha_vencimiento: '2026-11-10',
+  prorrateada: false,
+  dias_cubiertos: 30,
+  dias_del_periodo: 30,
+  total: '462500.50',
+  estado: 'pendiente',
+  lineas: [
+    { id: 1, tipo: 'alquiler', concepto_id: null, descripcion: 'Alquiler noviembre 2026', importe: '450000.00' },
+    { id: 2, tipo: 'concepto', concepto_id: 13, descripcion: 'ABL', importe: '12500.50' },
+  ],
+}
+
+export const CUOTA_COBRADA: Cuota = { ...CUOTA_PENDIENTE, id: 31, periodo_desde: '2026-10-01', periodo_hasta: '2026-10-31', estado: 'cobrada' }
+export const CUOTA_ANULADA: Cuota = { ...CUOTA_PENDIENTE, id: 32, periodo_desde: '2026-09-01', periodo_hasta: '2026-09-30', estado: 'anulada' }
+
+/** Los conceptos del contrato que paga el inquilino: las expensas (variables) y el ABL (fijo, ya en la cuota). */
+export const CONCEPTOS_DEL_INQUILINO: ConceptoDelContrato[] = [
+  { id: 11, concepto: 'expensas', descripcion: 'Ordinarias', paga: 'inquilino', importe: null, activo: true },
+  { id: 13, concepto: 'abl', descripcion: '', paga: 'inquilino', importe: '12500.50', activo: true },
+  CONCEPTO_SEGURO,
+]
+
+export const PREVISUALIZACION_DE_CUOTAS: PrevisualizacionDeCuotas = {
+  periodo_desde: '2026-11-01',
+  periodo_hasta: '2026-11-30',
+  propuestas: [
+    {
+      contrato_id: 5,
+      numero: 'C-000005',
+      bloqueada: null,
+      precio_id: 2,
+      periodo_desde: '2026-11-01',
+      periodo_hasta: '2026-11-30',
+      fecha_emision: '2026-11-01',
+      fecha_vencimiento: '2026-11-10',
+      prorrateada: false,
+      dias_cubiertos: 30,
+      dias_del_periodo: 30,
+      alquiler: '450000.00',
+      conceptos: [{ concepto_id: 13, descripcion: 'ABL', importe: '8500.25' }],
+      variables: [{ concepto_id: 11, descripcion: 'Expensas' }],
+    },
+    {
+      contrato_id: 7,
+      numero: 'C-000007',
+      bloqueada: null,
+      precio_id: 5,
+      periodo_desde: '2026-11-20',
+      periodo_hasta: '2026-11-30',
+      fecha_emision: '2026-11-20',
+      fecha_vencimiento: '2026-11-20',
+      prorrateada: true,
+      dias_cubiertos: 11,
+      dias_del_periodo: 30,
+      alquiler: '165000.00',
+      conceptos: [],
+      variables: [],
+    },
+  ],
+  ya_generadas: [{ contrato_id: 8, numero: 'C-000008', cuota_id: 31 }],
+  bloqueadas: [{ contrato_id: 9, numero: 'C-000009', motivo: 'Tiene el ajuste del 01-11-2026 pendiente: aplicalo primero.' }],
+}
+
+export const COBRO_EN_TERMINO: PropuestaDeCobro = {
+  cuota_id: 30,
+  fecha: '2026-11-08',
+  importe_cuota: '462500.50',
+  punitorio: '0.00',
+  dias_de_atraso: 0,
+  vencimiento: '2026-11-10',
+  vencimiento_efectivo: '2026-11-10',
+  total: '462500.50',
+  punitorio_para: 'inmobiliaria',
+}
+
+export const COBRO_CON_PUNITORIO: PropuestaDeCobro = {
+  ...COBRO_EN_TERMINO,
+  fecha: '2026-11-14',
+  punitorio: '9250.01',
+  dias_de_atraso: 4,
+  total: '471750.51',
+}
+
+export const COBRO: Cobro = {
+  id: 40,
+  cuota_id: 30,
+  periodo_desde: '2026-11-01',
+  contrato_id: 5,
+  numero_contrato: 'C-000005',
+  inquilino_id: 3,
+  inquilino_nombre: 'Carla Ficticia',
+  fecha: '2026-11-14',
+  importe_cuota: '462500.50',
+  punitorio: '9250.01',
+  punitorio_condonado: '0.00',
+  dias_de_atraso: 4,
+  total: '471750.51',
+  medios: [
+    { medio_pago: 'efectivo', referencia: null, monto: '400000.00' },
+    { medio_pago: 'transferencia', referencia: 'OP-998877', monto: '71750.51' },
+  ],
+  anulado: false,
+  motivo_anulacion: null,
+  usuario: 'operador1',
+  recibo: { id: 77, numero: '00000012', punto_venta: 1, concepto: 'Alquiler noviembre 2026, Avenida Ficticia 456 (C-000005)', anulado: false },
+  imputaciones: [
+    { propietario_id: 1, propietario_nombre: 'Ana Inventada', tipo: 'alquiler', importe: '270000.00' },
+    { propietario_id: 1, propietario_nombre: 'Ana Inventada', tipo: 'concepto', importe: '5100.15' },
+    { propietario_id: 2, propietario_nombre: 'Beto Ejemplo', tipo: 'alquiler', importe: '180000.00' },
+    { propietario_id: 2, propietario_nombre: 'Beto Ejemplo', tipo: 'concepto', importe: '3400.10' },
+  ],
+}
+
+export const COBRO_ANULADO: Cobro = { ...COBRO, id: 41, anulado: true, motivo_anulacion: 'Se cobró dos veces (operador1)', recibo: { ...COBRO.recibo!, anulado: true } }
+
+export const GASTO: Gasto = {
+  id: 50,
+  propiedad_id: 1,
+  propiedad_codigo: 'P-000001',
+  propiedad_direccion: 'Calle Inventada 123 4° B',
+  fecha: '2026-10-20',
+  categoria: 'reparacion',
+  descripcion: 'Cambio de la bomba de agua',
+  importe: '85000.00',
+  comprobante: 'A-0001-123',
+  anulado: false,
+  usuario: 'operador1',
+  imputaciones: [
+    { propietario_id: 1, propietario_nombre: 'Ana Inventada', importe: '51000.00' },
+    { propietario_id: 2, propietario_nombre: 'Beto Ejemplo', importe: '34000.00' },
+  ],
+}
+
+export const GASTO_ANULADO: Gasto = { ...GASTO, id: 51, descripcion: 'Pintura del palier', anulado: true }
+
+export const ITEMS_DE_LIQUIDACION = [
+  {
+    asiento_id: 101,
+    tipo: 'cobro' as const,
+    fecha: '2026-11-14',
+    descripcion: 'Alquiler noviembre 2026 C-000005 (cobrado el 14-11-2026)',
+    importe: '270000.00',
+    base_comision: '270000.00',
+    comision_pct: '5.00',
+    comision: '13500.00',
+  },
+  {
+    asiento_id: 102,
+    tipo: 'gasto' as const,
+    fecha: '2026-10-20',
+    descripcion: 'Gasto: Cambio de la bomba de agua',
+    importe: '-51000.00',
+    base_comision: '0.00',
+    comision_pct: '0.00',
+    comision: '0.00',
+  },
+]
+
+export const PREVISUALIZACION_DE_LIQUIDACION: PrevisualizacionDeLiquidacion = {
+  propietario_id: 1,
+  propietario_nombre: 'Ana Inventada',
+  hasta: '2026-11-15',
+  items: ITEMS_DE_LIQUIDACION,
+  cobrado: '270000.00',
+  gastos: '51000.00',
+  comision: '13500.00',
+  neto: '205500.00',
+}
+
+export const LIQUIDACION: Liquidacion = {
+  id: 60,
+  numero: 'L-000001',
+  propietario_id: 1,
+  propietario_nombre: 'Ana Inventada',
+  fecha: '2026-11-15',
+  hasta: '2026-11-15',
+  cobrado: '270000.00',
+  gastos: '51000.00',
+  comision: '13500.00',
+  neto: '205500.00',
+  estado: 'emitida',
+  fecha_pago: null,
+  medio_pago: null,
+  referencia_pago: null,
+  observaciones: null,
+  usuario: 'operador1',
+  items: ITEMS_DE_LIQUIDACION,
+}
+
+export const LIQUIDACION_PAGADA: Liquidacion = {
+  ...LIQUIDACION,
+  id: 61,
+  numero: 'L-000002',
+  estado: 'pagada',
+  fecha_pago: '2026-11-16',
+  medio_pago: 'transferencia',
+  referencia_pago: 'TR-5544',
+}
+
+export const LIQUIDACION_ANULADA: Liquidacion = { ...LIQUIDACION, id: 62, numero: 'L-000003', estado: 'anulada', items: [] }
+
+export const FONDOS: FondosDeTerceros = {
+  a_pagar_a_propietarios: [
+    { tercero_id: 1, nombre: 'Ana Inventada', saldo: '205500.00' },
+    { tercero_id: 2, nombre: 'Beto Ejemplo', saldo: '136000.00' },
+  ],
+  total_a_pagar: '341500.00',
+  inquilinos_deudores: [{ tercero_id: 3, nombre: 'Carla Ficticia', saldo: '462500.50' }],
+  total_adeudado: '462500.50',
 }

@@ -112,3 +112,43 @@ export function aDatetimeLocal(valor: string | Date | null | undefined): string 
 export function desdeDatetimeLocal(valor: string): string {
   return valor.length === 16 ? `${valor}:00` : valor
 }
+
+// ── Meses (para las cuotas, que se piden y se leen por mes) ─────────────
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/**
+ * Cuántos días tiene un mes (`anio`, `mes` 1–12), por aritmética de calendario: no se arma un `Date`, que depende de la zona del
+ * navegador y ya corrió un día más de una vez (`fecha`, arriba).
+ */
+export function diasDelMes(anio: number, mes: number): number {
+  if (mes === 2) return (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0 ? 29 : 28
+  return [4, 6, 9, 11].includes(mes) ? 30 : 31
+}
+
+const MES_ISO = /^(\d{4})-(\d{2})/
+
+/** `2026-11-15` o `2026-11` → `2026-11` (lo que da y recibe un `<input type="month">`). Vacío si no es una fecha. */
+export function mesDe(iso: string | null | undefined): string {
+  const m = iso ? MES_ISO.exec(iso) : null
+  return m ? `${m[1]}-${m[2]}` : ''
+}
+
+/** El primer día de un mes `aaaa-mm`: `2026-11` → `2026-11-01`. Es el `ancla` que pide la API de cuotas. */
+export function primerDiaDelMes(mes: string): string {
+  const m = MES_ISO.exec(mes)
+  return m ? `${m[1]}-${m[2]}-01` : ''
+}
+
+/** El último día de un mes `aaaa-mm`: `2026-02` → `2026-02-28`. */
+export function ultimoDiaDelMes(mes: string): string {
+  const m = MES_ISO.exec(mes)
+  if (!m) return ''
+  return `${m[1]}-${m[2]}-${String(diasDelMes(Number(m[1]), Number(m[2]))).padStart(2, '0')}`
+}
+
+/** `2026-11-15` o `2026-11` → «noviembre 2026». Vacío si no es una fecha. */
+export function nombreDelMes(iso: string | null | undefined): string {
+  const m = iso ? MES_ISO.exec(iso) : null
+  return m ? `${MESES[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : ''
+}

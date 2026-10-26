@@ -9,7 +9,7 @@
 // ofrece, porque un link que da 403 es peor que no tenerlo. El permiso lo decide
 // el servidor; esto sólo evita ofrecer lo que va a fallar.
 import { Outlet } from 'react-router-dom'
-import { Building2, FilePenLine } from 'lucide-react'
+import { Building2, CalendarClock, FilePenLine, FileSpreadsheet, PiggyBank } from 'lucide-react'
 import { createLayout } from 'libra-ui/Layout'
 import { ICONOS } from 'libra-ui/iconos-identidad'
 
@@ -43,6 +43,24 @@ const Cascaron = createLayout<Usuario>({
         // `activoEn`: la ficha de una propiedad o de un contrato (`/propiedades/3`, `/contratos/5/editar`) deja marcada la entrada de su listado.
         { to: '/propiedades', label: 'Propiedades', icon: Building2, activoEn: ['/propiedades'] },
         { to: '/contratos', label: 'Contratos', icon: FilePenLine, activoEn: ['/contratos'] },
+      ],
+    },
+    // El mes de la inmobiliaria: lo que se cobra al inquilino (cuotas y cobros) y lo que se rinde al propietario (gastos, liquidaciones y
+    // el control de fondos de terceros). Cobros y Gastos llevan los íconos del catálogo del kit (`recibos` y `egresos`); Cuotas,
+    // Liquidaciones y Fondos de terceros son conceptos de este producto y llevan íconos de lucide que ningún otro concepto usa.
+    {
+      label: 'Cobranza',
+      items: [
+        { to: '/cuotas', label: 'Cuotas', icon: CalendarClock, activoEn: ['/cuotas'] },
+        { to: '/cobros', label: 'Cobros', icon: ICONOS.recibos, activoEn: ['/cobros'] },
+      ],
+    },
+    {
+      label: 'Propietarios',
+      items: [
+        { to: '/gastos', label: 'Gastos', icon: ICONOS.egresos },
+        { to: '/liquidaciones', label: 'Liquidaciones', icon: FileSpreadsheet, activoEn: ['/liquidaciones'] },
+        { to: '/fondos-de-terceros', label: 'Fondos de terceros', icon: PiggyBank },
       ],
     },
     {

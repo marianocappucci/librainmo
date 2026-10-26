@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ContratoEditar } from './ContratoEditar'
-import { CLIENTES, CONTRATO_BORRADOR, CONTRATO_VIGENTE, PROPIEDAD, PROPIEDAD_ALQUILADA } from '@/test/datos'
+import { CLIENTES, CONTRATO_BORRADOR, INDICES, CONTRATO_VIGENTE, PROPIEDAD, PROPIEDAD_ALQUILADA } from '@/test/datos'
 import { json, servidor } from '@/test/servidor'
 
 function montar(id: number) {
@@ -26,6 +26,7 @@ describe('Contrato — la edición', () => {
       'GET /api/contratos/6': json(CONTRATO_BORRADOR),
       'GET /api/propiedades': json([PROPIEDAD, PROPIEDAD_ALQUILADA]),
       'GET /api/clientes': json(CLIENTES),
+      'GET /api/contratos/ajustes/indices': json(INDICES),
     })
     montar(6)
 
@@ -38,7 +39,7 @@ describe('Contrato — la edición', () => {
     expect(screen.getByLabelText('Depósito')).toHaveValue('450.000,00')
     expect(screen.getByLabelText('Días de gracia')).toHaveValue('3')
     expect(screen.getByRole('combobox', { name: 'Método de ajuste' })).toHaveTextContent('Índice oficial')
-    expect(screen.getByRole('combobox', { name: 'Índice' })).toHaveTextContent('ICL (BCRA)')
+    expect(screen.getByRole('combobox', { name: 'Índice' })).toHaveValue('Índice para Contratos de Locación (ICL, base 30-06-2020 = 1)')
     expect(screen.getByRole('combobox', { name: 'Se ajusta cada' })).toHaveTextContent('Trimestral')
     expect(screen.getByLabelText('Punitorio (tasa en %)')).toHaveValue('0,50')
     expect(screen.getByLabelText('Comisión (%)')).toHaveValue('5,00')
@@ -50,6 +51,7 @@ describe('Contrato — la edición', () => {
       'GET /api/contratos/6': json(CONTRATO_BORRADOR),
       'GET /api/propiedades': json([PROPIEDAD, PROPIEDAD_ALQUILADA]),
       'GET /api/clientes': json(CLIENTES),
+      'GET /api/contratos/ajustes/indices': json(INDICES),
       'PUT /api/contratos/6': json(CONTRATO_BORRADOR),
     })
     montar(6)

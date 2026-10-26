@@ -13,6 +13,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CirclePlay, FilePenLine, Pencil, Trash2 } from 'lucide-react'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
+import { AjusteDelContrato, seAjusta } from '@/components/AjusteDelContrato'
 import { ConceptosDelContrato } from '@/components/ConceptosDelContrato'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Dato } from '@/components/Dato'
@@ -198,6 +199,8 @@ export function ContratoDetalle() {
           </dl>
         </CardContent>
       </Card>
+
+      {seAjusta(contrato) && <AjusteDelContrato contrato={contrato} onAplicado={alCambiar} />}
 
       <Card>
         <CardHeader>

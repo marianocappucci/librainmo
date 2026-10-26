@@ -32,10 +32,17 @@ from libracore.db import core as libracore_core
 from libracore.indices_ajuste import INDICES, IndiceFaltante
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
+from libracore.tema_router import build_tema_admin_router, build_tema_router
 
 from app import db
 from app.auditoria import COLUMNAS_OCULTAS, etiqueta_segura
-from app.auth import UserRepository, construir_session_auth, require_admin, require_rol
+from app.auth import (
+    UserRepository,
+    construir_session_auth,
+    require_admin,
+    require_admin_o_servicio_o_panel,
+    require_rol,
+)
 from app.config import Config
 from app.errores import ErrorDeDominio
 from app.modulos import ModuleRepository, exigir_modulo
@@ -164,6 +171,10 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
         return JSONResponse({"detail": exc.mensaje}, status_code=exc.status)
 
     app.include_router(salud.router)
+    # El tema de la suite (colores y modo de la instancia): lo lee la SPA al arrancar, antes de la sesión, y lo
+    # cambia el admin o el backoffice. Sin esto la SPA pide `/api/tema` y recibe un 404 en cada carga.
+    app.include_router(build_tema_router())
+    app.include_router(build_tema_admin_router(), dependencies=[Depends(require_admin_o_servicio_o_panel)])
     app.include_router(auth_router.construir_router())
     app.include_router(usuarios_router.construir_router())
     # `GET/POST /terminos…`. NO se gatea desde afuera: es el único camino para

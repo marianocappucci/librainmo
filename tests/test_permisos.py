@@ -46,3 +46,8 @@ def test_el_usuario_inactivo_no_entra(app, como):
     r = admin.put(f"/api/usuarios/{uid}", json={"name": "Usuario operador", "role": "operador", "active": False})
     assert r.status_code == 200
     assert como("operador").get("/api/config/empresa").status_code == 401
+
+
+def test_el_tema_lo_lee_cualquiera_y_lo_cambia_el_admin(anonimo, como):
+    assert anonimo.get("/api/tema").status_code == 200
+    assert como("operador").put("/api/tema", json={}).status_code in (401, 403)

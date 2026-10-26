@@ -37,6 +37,14 @@ def cobrar(cuota_id: int, datos: CobroEntrada, sesion: Session = Depends(obtener
                            condonar_punitorio=datos.condonar_punitorio, usuario=_usuario(usuario))
 
 
+@router.get("/medios")
+def medios():
+    """Con qué se puede cobrar un alquiler: los medios del motor (`libracore.medios_pago`) menos «cuenta corriente»."""
+    from libracore import medios_pago
+
+    return [{"clave": m, "nombre": medios_pago.label(m)} for m in servicio.MEDIOS]
+
+
 @router.get("")
 def buscar(contrato_id: int | None = None, desde: date | None = None, hasta: date | None = None,
            incluir_anulados: bool = False, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),

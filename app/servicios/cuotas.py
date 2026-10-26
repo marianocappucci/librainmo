@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errores import Conflicto, Invalido, NoEncontrado
+from app.models.cobros import Cobro
 from app.models.contratos import Contrato
 from app.models.cuotas import Cuota, CuotaLinea
 from app.servicios import ajustes, clientes, cuentas
@@ -171,7 +172,8 @@ def a_dict(sesion: Session, q: Cuota) -> dict:
             c.inquilino_id, ""),
         "periodo_desde": q.periodo_desde, "periodo_hasta": q.periodo_hasta, "fecha_emision": q.fecha_emision,
         "fecha_vencimiento": q.fecha_vencimiento, "prorrateada": q.prorrateada, "dias_cubiertos": q.dias_cubiertos,
-        "dias_del_periodo": q.dias_del_periodo, "total": texto(q.total), "estado": q.estado,
+        "dias_del_periodo": q.dias_del_periodo, "total": texto(q.total), "estado": q.estado, "moneda": c.moneda,
+        "cobro_id": sesion.scalar(select(Cobro.id).where(Cobro.cuota_id == q.id, Cobro.anulado.is_(False))),
         "lineas": [{"id": x.id, "tipo": x.tipo, "concepto_id": x.concepto_id, "descripcion": x.descripcion,
                     "importe": texto(x.importe)} for x in q.lineas],
     }

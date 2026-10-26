@@ -158,3 +158,13 @@ def test_el_reparto_cierra_al_centavo(importe, partes, esperado):
     r = repartir(Decimal(importe), [(k, Decimal(v)) for k, v in partes])
     assert [str(x[1].quantize(Decimal("0.01"))) for x in r] == esperado
     assert sum(x[1] for x in r) == Decimal(importe)
+
+
+def test_la_cuota_trae_su_cobro_y_los_medios_salen_del_motor(admin, escena):
+    q = _cuota(admin, "2026-11-05")
+    assert (q["cobro_id"], q["moneda"]) == (None, "ARS")
+    cobro = admin.post(f"/api/cuotas/{q['id']}/cobrar", json={"fecha": "2026-11-13",
+                                                              "medios": EFECTIVO("305000")}).json()
+    assert admin.get(f"/api/cuotas/{q['id']}").json()["cobro_id"] == cobro["id"]
+    medios = {m["clave"]: m["nombre"] for m in admin.get("/api/cobros/medios").json()}
+    assert medios["efectivo"] == "Efectivo" and "cuenta_corriente" not in medios

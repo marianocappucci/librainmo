@@ -12,6 +12,8 @@ caben en un schema. `app/modulos.py` lee y escribe la del motor.
 
 from app.models.base import Base
 from app.models.contratos import ConceptoContrato, Contrato, ContratoPrecio, Garantia
+from app.models.cuotas import Cuota, CuotaLinea
 from app.models.propiedades import Propiedad, Titular
 
-__all__ = ["Base", "ConceptoContrato", "Contrato", "ContratoPrecio", "Garantia", "Propiedad", "Titular"]
+__all__ = ["Base", "ConceptoContrato", "Contrato", "ContratoPrecio", "Cuota", "CuotaLinea", "Garantia", "Propiedad",
+           "Titular"]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,8 @@ from app.schemas.contratos import (
     PrecioEntrada,
     RescisionEntrada,
 )
+from app.schemas.cuotas import AjusteEntrada
+from app.servicios import ajustes
 from app.servicios import contratos as servicio
 
 router = APIRouter(
@@ -103,3 +107,16 @@ def agregar_concepto(contrato_id: int, datos: ConceptoEntrada, sesion: Session =
 def actualizar_concepto(contrato_id: int, concepto_id: int, datos: ConceptoCambio,
                         sesion: Session = Depends(obtener_sesion)):
     return servicio.actualizar_concepto(sesion, contrato_id, concepto_id, datos.model_dump(exclude_unset=True))
+
+
+@router.get("/{contrato_id}/ajuste")
+def proponer_ajuste(contrato_id: int, fecha: date | None = None, sesion: Session = Depends(obtener_sesion)):
+    """El ajuste que le toca al contrato (hoy, o en `fecha`), con los valores que tomó. **No escribe nada.** Si falta
+    un valor del índice, se baja de la fuente y se reintenta; si igual falta, 409 con las fechas que faltan."""
+    return ajustes.proponer(sesion, contrato_id, fecha=fecha)
+
+
+@router.post("/{contrato_id}/ajuste", status_code=201)
+def aplicar_ajuste(contrato_id: int, datos: AjusteEntrada, sesion: Session = Depends(obtener_sesion),
+                   usuario=Depends(get_current_user)):
+    return ajustes.aplicar(sesion, contrato_id, fecha_ajuste=datos.fecha_ajuste, usuario=_usuario(usuario))

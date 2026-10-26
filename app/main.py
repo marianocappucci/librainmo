@@ -28,6 +28,7 @@ from libracore.config_router import (
     build_empresa_router,
 )
 from libracore.db import core as libracore_core
+from libracore.indices_ajuste import INDICES, IndiceFaltante
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 
@@ -39,7 +40,7 @@ from app.errores import ErrorDeDominio
 from app.modulos import ModuleRepository, exigir_modulo
 from app.roles import ROLES, TODOS
 from app.routers import auth as auth_router
-from app.routers import contratos, propiedades, salud
+from app.routers import contratos, cuotas, propiedades, salud
 from app.routers import usuarios as usuarios_router
 
 #: Qué entra al log de actividad: `{clase del modelo: nombre legible}`.
@@ -57,6 +58,8 @@ AUDITABLES: dict[str, str] = {
     "ContratoPrecio": "precio de contrato",
     "Garantia": "garantía de contrato",
     "ConceptoContrato": "concepto de contrato",
+    "Cuota": "cuota",
+    "CuotaLinea": "línea de cuota",
 }
 
 
@@ -139,6 +142,13 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # externo.
     app.add_middleware(SecurityHeadersMiddleware, csp=CSP_SPA)
 
+    @app.exception_handler(IndiceFaltante)
+    async def _indice_faltante(_request: Request, exc: IndiceFaltante) -> JSONResponse:
+        # El ajuste no se calcula con un índice que falta (ADR-085 del motor): se dice qué fechas cargar.
+        return JSONResponse({"detail": {"mensaje": str(exc), "indice": exc.indice,
+                                        "indice_nombre": INDICES[exc.indice].nombre,
+                                        "fechas_faltantes": exc.fechas}}, status_code=409)
+
     @app.exception_handler(ErrorDeDominio)
     async def _error_de_dominio(_request: Request, exc: ErrorDeDominio) -> JSONResponse:
         return JSONResponse({"detail": exc.mensaje}, status_code=exc.status)
@@ -157,6 +167,7 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
                        dependencies=[*exigir_modulo("alquileres"), Depends(require_rol(*ROLES))])
     app.include_router(propiedades.router)
     app.include_router(contratos.router)
+    app.include_router(cuotas.router)
 
     # 🔴 `prefix="/api/logs"` y NO el `/logs` por default: la SPA tiene su
     # pantalla en `/logs`, y FastAPI resuelve sus rutas antes que el catch-all.

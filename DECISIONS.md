@@ -98,3 +98,23 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
    (`app/servicios/montos.py`): un `float` no tiene centavos exactos, y esto es plata de terceros.
 7. **Las reglas viven en el servicio, no sólo en pydantic**: la importación de contratos va a llamar al servicio
    directo.
+
+## ADR-005 — Cuotas mensuales y ajuste del alquiler (fase 1, tanda 2a)
+
+**Estado:** aceptada (2026-10-26).
+
+**Decisión.**
+1. **La aritmética es la del motor** (`libracore.periodos`): mes adelantado y prorrateo por días en las dos puntas. El
+   fin efectivo de un contrato rescindido es su fecha de rescisión.
+2. **Una cuota no vence antes de emitirse** (decisión del 2026-10-26): vence `max(día pactado, emisión)`. Con la
+   cuenta de LibraDesk, una cuota prorrateada que arranca el 20 con vencimiento el 10 vencería diez días antes de
+   existir.
+3. **Previsualizar y generar**, con confirmación humana. Idempotente: un índice único parcial deja una sola cuota viva
+   por contrato y mes; anular libera el mes.
+4. **Un ajuste pendiente bloquea la cuota de ese contrato** hasta aplicarlo. El ajuste se cuenta desde
+   `fecha_inicio` (`periodo_anclado`), su base es el precio vigente, por índice usa `libracore.indices_ajuste` (y baja
+   el índice si falta) y por porcentaje compone los períodos que pasaron.
+5. **Los conceptos que paga el inquilino van en la cuota**: los fijos solos, los variables con el importe del mes (al
+   generar o después). No se prorratean. Los que paga el propietario no van en la cuota.
+6. **Cada cuota es un cargo en la cuenta del inquilino** (`cc_asientos`, rol `inquilino`), en la misma transacción.
+   Agregarle una línea corrige el asiento; anularla lo contraasienta. El importe queda congelado (`precio_id`).

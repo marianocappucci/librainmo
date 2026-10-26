@@ -74,3 +74,39 @@ def test_el_libro_de_terceros_y_los_indices_tienen_la_forma_que_el_producto_supo
 
         assert {"tercero_id", "rol"} <= columnas("cc_asientos")
         assert columnas("indices_ajuste")  # la tabla existe y tiene columnas
+
+
+def test_el_contrato_del_backoffice_lee_los_modulos_sin_arrancar_la_app(base, tmp_path):
+    """El backoffice corre `from app.database import get_modulos` ADENTRO del contenedor, sin `crear_app()`.
+
+    Se prueba en un subproceso limpio, que es la forma en que lo corre `docker exec`: con el core sin
+    configurar, `app.database` lo apunta solo a la base de la instancia.
+    """
+    import os
+
+    # La app de la fixture dejó el módulo sembrado: se siembra a mano, como lo deja el primer arranque.
+    from libracore.provisioning import apply_plan_modules
+
+    from tests.conftest import url_de_tests
+
+    apply_plan_modules(url_de_tests(), active_modules={"alquileres"}, all_modules={"alquileres"}, plan="alquileres")
+    resultado = subprocess.run(
+        [sys.executable, "-c", "from app.database import get_modulos; print(get_modulos())"],
+        cwd=RAIZ,
+        env={**os.environ, "LIBRAINMO_DATABASE_URL": url_de_tests()},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
+    assert resultado.stdout.strip() == "{'alquileres': True}"
+
+
+def test_set_addon_cambia_el_estado_que_lee_el_backoffice(app):
+    from app import database
+
+    database.set_addon("alquileres", False)
+    assert database.get_modulos() == {"alquileres": False}
+    assert app.state.modules.is_enabled("alquileres") is False
+    database.set_addon("alquileres", True)
+    assert database.get_modulos() == {"alquileres": True}

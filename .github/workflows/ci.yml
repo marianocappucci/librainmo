@@ -325,3 +325,6 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # El reporte SARIF como artifact no lo lee nadie, y con la cuota de artifacts de la cuenta agotada la
+          # Action falla DESPUÉS de escanear sin hallazgos (2026-10-26). Lo que corta es el escaneo, no el reporte.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"

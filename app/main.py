@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from libraauth.auditoria import (
     AuditoriaRepository,
@@ -42,6 +43,7 @@ from app.roles import ROLES, TODOS
 from app.routers import auth as auth_router
 from app.routers import cobros, contratos, cuotas, liquidaciones, propiedades, salud
 from app.routers import usuarios as usuarios_router
+from app.validacion import errores_en_espanol
 
 #: Qué entra al log de actividad: `{clase del modelo: nombre legible}`.
 #:
@@ -147,6 +149,8 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # las de error de los de adentro. `CSP_SPA`: este producto no carga nada
     # externo.
     app.add_middleware(SecurityHeadersMiddleware, csp=CSP_SPA)
+
+    app.add_exception_handler(RequestValidationError, errores_en_espanol)
 
     @app.exception_handler(IndiceFaltante)
     async def _indice_faltante(_request: Request, exc: IndiceFaltante) -> JSONResponse:

@@ -37,6 +37,16 @@ def _usuario(usuario: dict | None) -> str:
     return (usuario or {}).get("username") or "Sistema"
 
 
+@router.get("/ajustes/indices")
+def indices_de_ajuste():
+    """Los índices del motor (`libracore.indices_ajuste.INDICES`), para elegir el del contrato."""
+    from libracore import indices_descarga
+    from libracore.indices_ajuste import INDICES
+
+    return [{"clave": i.clave, "nombre": i.nombre, "periodicidad": i.periodicidad,
+             "se_baja_solo": i.clave in indices_descarga.DESCARGABLES} for i in INDICES.values()]
+
+
 @router.get("")
 def buscar(q: str | None = None, estado: str | None = None, propiedad_id: int | None = None,
            inquilino_id: int | None = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),

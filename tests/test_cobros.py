@@ -131,7 +131,7 @@ def test_el_recibo_se_imprime(admin, escena):
 
 @pytest.mark.parametrize("medios, mensaje", [
     ([{"medio_pago": "cuenta_corriente", "monto": "305000"}], "inválido"),
-    ([], "List should have at least 1 item"),
+    ([], "al menos 1 elemento"),
 ])
 def test_medios_invalidos(admin, escena, medios, mensaje):
     q = _cuota(admin, "2026-11-05")

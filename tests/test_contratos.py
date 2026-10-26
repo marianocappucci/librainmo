@@ -266,3 +266,20 @@ def test_el_precio_nuevo_no_empieza_despues_del_fin(admin, escena):
     admin.post(f"/api/contratos/{c['id']}/activar")
     r = admin.post(f"/api/contratos/{c['id']}/precios", json={"importe": "1", "vigencia_desde": "2030-01-01"})
     assert r.status_code == 422
+
+
+def test_el_catalogo_de_indices_sale_del_motor(admin):
+    claves = {i["clave"]: i for i in admin.get("/api/contratos/ajustes/indices").json()}
+    assert {"icl", "ipc", "ipc_variacion", "cer", "uva", "dolar_a3500", "casa_propia"} <= set(claves)
+    assert claves["icl"]["se_baja_solo"] is True and claves["casa_propia"]["se_baja_solo"] is False
+
+
+def test_los_errores_de_validacion_salen_en_espanol(admin, escena):
+    r = admin.post("/api/contratos", json={"propiedad_id": escena["propiedad"], "inquilino_id": escena["inquilina"],
+                                           "fecha_inicio": "2026-11-01", "fecha_fin": "2027-10-31",
+                                           "importe_inicial": "0", "dia_vencimiento": 40})
+    assert r.status_code == 422
+    mensajes = {e["loc"][-1]: e["msg"] for e in r.json()["detail"]}
+    assert mensajes == {"importe_inicial": "Tiene que ser mayor que 0.", "dia_vencimiento": "Tiene que ser 31 o menos."}
+    r = admin.post("/api/contratos", json={})
+    assert {e["msg"] for e in r.json()["detail"]} == {"Falta este dato."}

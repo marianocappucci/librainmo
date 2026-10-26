@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- **Pantallas del mes**: cuotas (generar con las expensas, ficha, cobrar), cobros, ajuste en la ficha del contrato, gastos, liquidaciones y fondos de terceros. **Pantallas de la tanda 1**: propiedades con titulares y contratos. Catálogo de índices y medios de cobro por API; errores de validación en español; `/api/tema`. Pin de `libracore` a v1.197.1: anular un cobro anula su recibo en la misma transacción. Probado de punta a punta contra el backend real (alta, ajuste con el ICL bajado del BCRA, cobro con punitorio y recibo, liquidación).
 - **Gastos, liquidaciones y fondos de terceros** (ADR-007, revisión `0005`): `/api/gastos` (registrar, repartido entre titulares; anular), `/api/liquidaciones` (previsualizar, emitir con la comisión, pagar, anular) y `/api/reportes/fondos-de-terceros`.
 - **Cobros** (ADR-006, revisión `0004`): `GET /api/cuotas/{id}/cobro` (cuánto con punitorio), `POST /api/cuotas/{id}/cobrar` (medios, condonar), `/api/cobros` (buscar, ver, anular, `recibo.pdf`). Reparto entre titulares en el libro del motor y recibo «por cuenta y orden de». Pin de `libracore` a v1.197.0.
 - **Cuotas y ajuste** (ADR-005, revisión `0003`): `/api/cuotas` (previsualizar, generar con las expensas del mes, agregar un cargo, anular, buscar) y `/api/contratos/{id}/ajuste` (proponer y aplicar, por índice o por porcentaje). Cada cuota es un cargo en la cuenta del inquilino en el libro del motor. Pin de `libracore` a v1.196.2.

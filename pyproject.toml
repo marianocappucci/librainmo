@@ -20,7 +20,7 @@ dependencies = [
     # (clientes, facturas, libro de terceros, recibos, índices de ajuste) vive en
     # la MISMA base que el dominio (ADR-002). `python -m app.migrar` corre su
     # cadena (`libracore.migrar.upgrade`) antes de la del dominio.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.197.0",
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.197.1",
 ]
 
 [project.optional-dependencies]

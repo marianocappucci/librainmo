@@ -133,8 +133,8 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
    con `punitorio_para='propietario'`. El reparto cierra al centavo (el último titular absorbe el redondeo).
 4. **El recibo es del motor** (`emitir_recibo_de_asiento`, ADR-087 del motor, v1.197.0), «por cuenta y orden de» los
    titulares, en la misma transacción. PDF en `GET /api/cobros/{id}/recibo.pdf`.
-5. **Anular** contraasienta todo, anula el recibo y deja la cuota pendiente. 🔸 `anular_recibo` del motor no acepta
-   `conn=` todavía: el recibo se anula después de confirmar (pendiente del motor, anotado en `TASKS.md`).
+5. **Anular** contraasienta todo, anula el recibo y deja la cuota pendiente, en una sola transacción
+   (`anular_recibo(conn=)` desde libracore v1.197.1; hasta entonces el recibo se anulaba después de confirmar).
 6. Medios: los del motor (`libracore.medios_pago`) menos «cuenta corriente»; tienen que sumar el total.
 
 ## ADR-007 — Gastos, liquidación al propietario y fondos de terceros (fase 1, tanda 2c)

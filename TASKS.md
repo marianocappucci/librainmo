@@ -24,7 +24,7 @@ Trabajo concreto y vigente.
 
 - [x] Esqueleto (2026-10-26) — app que arranca y migra las tres cadenas sobre una sola base (`libraauth`, `libracore`, dominio), login por cookie, roles `admin` y `operador`, módulo y plan `alquileres`, auditoría, Términos, empresa y backup, SPA con login, Inicio, Usuarios y Actividad, suite y CI
 
-- 🔸 **Motor:** `libracore.db.recibos.anular_recibo` sin `conn=`. El cobro anulado y su recibo no van en la misma transacción (ADR-006).
+- [x] ~~**Motor:** `anular_recibo` sin `conn=`~~ ✅ **Cerrado el 2026-10-26**: libracore v1.197.1.
 - 🔸 **Pago parcial de una cuota** (ADR-006): definir con el piloto cómo se imputa.
 - 🔸 **[H] IVA de la comisión** (ADR-007): ¿va incluida o aparte? Con el contador del piloto, antes de facturarla.
 - 🔸 **Neto negativo** (ADR-007): cómo se arrastra la deuda del propietario a la liquidación siguiente.

@@ -13,14 +13,13 @@
 4. **El reparto cierra al centavo**: cada parte se redondea HALF_UP y el último titular se lleva la diferencia.
 5. **El recibo es del motor** (`libracore.recibos.emitir_recibo_de_asiento`, ADR-087), «por cuenta y orden de» los
    titulares, en la misma transacción que los asientos.
-6. **Anular un cobro** contraasienta todo, anula el recibo y deja la cuota otra vez pendiente. 🔸 `anular_recibo` del
-   motor todavía no acepta `conn=`, así que el recibo se anula después de confirmar (pendiente del motor).
+6. **Anular un cobro** contraasienta todo, anula el recibo y deja la cuota otra vez pendiente, en una sola transacción
+   (`anular_recibo(conn=)`, libracore v1.197.1).
 """
 
 from __future__ import annotations
 
 import json
-import logging
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -38,8 +37,6 @@ from app.models.propiedades import Propiedad
 from app.servicios import clientes, cuentas
 from app.servicios.cuotas import nombre_del_mes
 from app.servicios.montos import texto
-
-logger = logging.getLogger(__name__)
 
 _CENTAVO = Decimal("0.01")
 CERO = Decimal("0.00")
@@ -229,11 +226,8 @@ def anular(sesion: Session, cobro_id: int, *, motivo: str, usuario: str) -> dict
     cobro.anulado = True
     cobro.motivo_anulacion = f"{motivo.strip()} ({usuario})"
     q.estado = "pendiente"
+    db_recibos.anular_recibo(cobro.recibo_id, motivo=motivo.strip(), conn=conexion_libracore(sesion.connection()))
     sesion.commit()
-    try:
-        db_recibos.anular_recibo(cobro.recibo_id, motivo=motivo.strip())
-    except Exception:  # noqa: BLE001 — el cobro ya quedó anulado: se avisa en el log y la pantalla lo muestra
-        logger.exception("No se pudo anular el recibo %s del cobro %s", cobro.recibo_id, cobro.id)
     return a_dict(sesion, cobro)
 
 

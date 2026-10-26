@@ -10,6 +10,7 @@ Trabajo concreto y vigente.
 - [ ] Cuando entre el primer modelo: sumarlo a `AUDITABLES` (`app/main.py`) y declarar en `app/auditoria.py` las columnas que no deben copiarse al log
 - [ ] Pantallas de la SPA: hoy sólo hay Inicio (vacía), Usuarios y Actividad. Agregar al menú de `Layout.tsx` y a `titulos-con-icono.test.ts` cada una que entre
 - [ ] Cuando haya selects de datos y campos de cliente: subir los pisos de los guards de `frontend/src/test/` (`campos-de-cliente`, `selects-buscables`), que hoy aceptan cero porque el esqueleto no tiene ninguno
+- [ ] Cuando entre la primera tabla con columna de acciones: sumar el guard de «columna de acciones con título y botones con borde» (`acciones-normalizadas.test.ts` en LibraView/LibraClub), que acá no se copió porque no hay tablas
 - [ ] Datos de demo (semillas) con inquilinos, propietarios y propiedades **ficticios**
 
 ## Bloqueadas

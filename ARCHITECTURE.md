@@ -39,7 +39,7 @@ Diseño del producto: página `inmobiliaria-administracion-alquileres-diseno` de
   aceptar) y el router de usuarios unificado (`/api/usuarios`).
 - **`libracore`** (v1.196.1): reloj de Argentina (`libracore.fechas`), headers de seguridad
   (`CSP_SPA`), empresa/logo (`/api/config/empresa`), backup (`/api/config/backups…`), gate por módulo
-  (`modules_gate.require_module`) y SPA. Y, a diferencia de LibraView, **su schema vive en la base
+  (`modules_gate.require_module`) y SPA. Y **su schema vive en la base
   del dominio**: es sobre lo que se va a construir el producto.
   - `clients`: inquilinos, propietarios y garantes (el propietario tiene que serlo: se le factura la comisión).
   - `cc_asientos` (libro de terceros, ADR-026 del motor): `libracore/db/libro_de_terceros.py`
@@ -52,6 +52,9 @@ Diseño del producto: página `inmobiliaria-administracion-alquileres-diseno` de
 - **`plans.py`** — plan `alquileres` → módulo `{"alquileres"}`. `app/modulos.py` lo guarda en la tabla
   `modulos` **del motor** y los routers de dominio pasan por `exigir_modulo("alquileres")` (403 si el
   plan no lo incluye; 401 antes, para no contarle a un anónimo qué módulos hay).
+- **`app/database.py`** — el contrato con el backoffice: `get_modulos` y `set_addon`, que éste corre por
+  `docker exec` sin arrancar la app. Delega en `libracore.db.modulos` (no confundir con `app/db.py`, el engine
+  de SQLAlchemy del dominio).
 - **`app/roles.py`** — `admin` y `operador`, con la matriz como grupos con nombre.
 - **Backup** — una sola base: el dump trae dominio, `libraauth` y `libracore`.
 

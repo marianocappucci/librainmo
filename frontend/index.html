@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- 🔴 `lang="es" translate="no"` y el meta `notranslate` desde el primer commit: el traductor automático de Chrome reescribe
+     los nodos de texto por debajo de React y el próximo render se cae («removeChild … not a child»). Lo vigila
+     `src/test/index-sin-traductor.test.ts`. -->
+<html lang="es" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>LibraInmo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

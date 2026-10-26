@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.coverage
+.pytest_cache/
+.ruff_cache/
+data/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# `config_manager` de LibraCore lo escribe en el cwd si `DATA_DIR` no está
+# puesto. En los tests el fixture lo aísla, pero un script corrido a mano lo
+# deja igual.
+config.json

@@ -1,0 +1,322 @@
+name: CI
+
+on:
+  # Sin `push` a ramas: `develop` y `main` estan protegidas, asi que todo entra
+  # por PR y el run del PR verifica el MERGE -- que es exactamente lo que queda
+  # en la rama. El push repetia esa misma verificacion sobre un arbol identico.
+  pull_request:
+    branches: [develop, main]
+
+# Una sola corrida viva por rama. Si entra un push nuevo mientras esta
+# corriendo, se cancela la anterior en vez de pagar las dos: su resultado ya no
+# le sirve a nadie, porque reporta sobre un codigo que no es el que quedo.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/librainmo_test
+      TZ: America/Argentina/Buenos_Aires
+    steps:
+      # El PostgreSQL sale de la Action compartida de libra-web-kit (`postgres-ci-v1`, desde el espejo de ECR;
+      # reglas/ci.md del wiki), con los mismos datos y el mismo healthcheck que el `services:` de antes.
+      # La MISMA imagen que producción (ver docker-compose.yml). No es un
+      # detalle de tamaño: el collation viene de la imagen y `-alpine` ordena
+      # por bytes, así que un `ORDER BY` sobre texto puede dar distinto. Un CI
+      # verde sobre otra imagen no dice nada sobre producción.
+      - name: PostgreSQL de la suite
+        uses: marianocappucci/libra-web-kit/.github/actions/postgres-ci@postgres-ci-v1
+        with:
+          variante: debian
+          base: librainmo_test
+          clave: postgres
+      - uses: actions/checkout@v7
+
+      # F3 (2026-09-05): un PR que solo toca frontend/ o documentacion no corre
+      # la suite de backend. Es el job caro -de 4 a 11 minutos por corrida en
+      # los ocho productos, medido en la auditoria de F3-; el de frontend cuesta
+      # el minimo facturable y no se toca. Los pasos de abajo llevan
+      # `if: steps.cambios.outputs.backend == 'true'`: el job sigue existiendo
+      # y termina en verde con los pasos salteados, asi que la proteccion de
+      # rama, que exige `test`, no cambia. Ante cualquier duda -no es un PR, la
+      # API no contesta, lista vacia- corre todo. La lista sale de la API y no
+      # de `git diff` porque el checkout es superficial.
+      - name: Que toca el PR
+        id: cambios
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n="${{ github.event.pull_request.number }}"
+          if [ -z "$n" ]; then echo "backend=true" >> "$GITHUB_OUTPUT"; echo "no es un PR: corre todo"; exit 0; fi
+          if ! archivos=$(gh api "repos/${{ github.repository }}/pulls/$n/files" --paginate --jq '.[].filename'); then
+            echo "backend=true" >> "$GITHUB_OUTPUT"; echo "la API no contesto: corre todo"; exit 0
+          fi
+          backend=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              frontend/*) ;;
+              *.md|docs/*|*.txt) ;;
+              *) backend=true ;;
+            esac
+          done <<< "$archivos"
+          [ -z "$archivos" ] && backend=true
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend"; echo "$archivos" | head -80
+      - uses: actions/setup-python@v7
+        if: steps.cambios.outputs.backend == 'true'
+        with:
+          python-version: '3.12'
+
+      # El backup corre `pg_dump`/`pg_restore` de verdad, así que el runner los
+      # necesita — y en la MISMA major que el servicio de arriba. No alcanza con
+      # "que estén": `pg_restore` 17 contra un servidor 16 aborta el restore
+      # entero. El `grep` convierte eso en un CI rojo hoy en vez de un botón roto
+      # en producción.
+      - name: Cliente de PostgreSQL (mismo major que el servicio)
+        if: steps.cambios.outputs.backend == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_restore --version
+          pg_restore --version | grep -q ' 16\.'
+
+      # Los repos de la familia vuelven a PRIVADO el 2026-09-01: sin
+      # credenciales, `pip` no puede clonarlos y el build falla adentro del
+      # install, con un error de git que no dice cual repo fallo.
+      #
+      # Una deploy key ES una identidad por repo, y con dos o mas cargadas SSH
+      # las ofrece en orden: GitHub autentica con la primera que acepta, que
+      # puede no ser la del repo que se esta clonando. Por eso el alias
+      # `github-<repo>` con `IdentitiesOnly yes`, y no `github.com` a secas.
+      #
+      # Estructura generalizada (la misma de libradesk/gestiolibra/medlibra):
+      # agregar una dependencia privada nueva es una linea de `configurar`.
+      - name: Configurar acceso SSH a las dependencias privadas de Libra
+        if: steps.cambios.outputs.backend == 'true'
+        env:
+          LIBRAAUTH_DEPLOY_KEY: ${{ secrets.LIBRAAUTH_DEPLOY_KEY }}
+          LIBRACORE_DEPLOY_KEY: ${{ secrets.LIBRACORE_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          configurar() {
+            repo=$1; clave=$2
+            if [ -z "$clave" ]; then
+              echo "::error::Falta el secret con la deploy key de $repo en este repositorio."
+              echo "Sin el, pip no puede clonar $repo (repo privado) y el build falla."
+              echo "Es la clave privada de una deploy key de solo lectura sobre marianocappucci/$repo."
+              exit 1
+            fi
+            printf '%s\n' "$clave" > ~/.ssh/id_"$repo"
+            chmod 600 ~/.ssh/id_"$repo"
+            printf 'Host github-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_%s\n  IdentitiesOnly yes\n' \
+              "$repo" "$repo" >> ~/.ssh/config
+            git config --global \
+              url."git@github-$repo:marianocappucci/$repo".insteadOf \
+              "https://github.com/marianocappucci/$repo"
+          }
+          configurar libraauth "$LIBRAAUTH_DEPLOY_KEY"
+          configurar libracore "$LIBRACORE_DEPLOY_KEY"
+
+      # Confirma que cada clave autentica contra SU repo y no contra otro: es
+      # exactamente el modo de fallar que motiva los alias de arriba, y sin
+      # este paso recien se notaria adentro del pip install.
+      - name: Verificar que cada deploy key resuelve a su propio repo
+        if: steps.cambios.outputs.backend == 'true'
+        run: |
+          for repo in libraauth libracore; do
+            saludo=$(ssh -o StrictHostKeyChecking=yes -T "git@github-$repo" 2>&1 || true)
+            echo "$repo -> $saludo"
+            case "$saludo" in
+              *"marianocappucci/$repo"*) ;;
+              *) echo "::error::La deploy key de $repo no resuelve a marianocappucci/$repo."; exit 1 ;;
+            esac
+          done
+
+      # F1 (2026-09-05): el entorno sale de `uv.lock`, no de la resolucion del dia.
+      # `--locked` falla si el lock no coincide con pyproject.toml: un pin que se
+      # mueve sin regenerar el lock pone rojo aca, no en produccion. El venv entra
+      # al PATH para que los pasos siguientes (ruff, pytest, alembic, scripts)
+      # sigan invocandose igual que antes.
+      - uses: astral-sh/setup-uv@v7
+        if: steps.cambios.outputs.backend == 'true'
+        with:
+          version: "0.12.10"
+      - name: Install package + dev deps (uv.lock)
+        if: steps.cambios.outputs.backend == 'true'
+        run: |
+          uv sync --locked --extra dev
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Lint
+        if: steps.cambios.outputs.backend == 'true'
+        run: ruff check .
+
+      # La suite corre contra PostgreSQL real. Nunca contra SQLite: las garantías
+      # del producto (el libro de terceros, los constraints, los índices únicos) son
+      # de PostgreSQL — una suite verde sobre SQLite estaría midiendo otro producto.
+      - name: Tests
+        if: steps.cambios.outputs.backend == 'true'
+        # `-rs` lista los tests SALTEADOS con su motivo. Sin eso, un módulo que
+        # se saltea entero —por una dependencia que falta en el runner— deja el
+        # job igual de verde que uno que corrió todo.
+        #
+        # `-n 4` (reglas/ci.md del wiki): 4 workers de xdist, que son las vCPU del
+        # runner. Cada uno tiene SU base de PostgreSQL, con las tres cadenas migradas
+        # (`tests/conftest.py`, `libracore.testing.pg_por_worker`); sin eso los workers
+        # se pisarían el `DROP SCHEMA` y el `TRUNCATE`.
+        #
+        # 🔑 Una sola base (ADR-002): dominio, `libraauth` y `libracore` juntos. El piso de
+        # cobertura (95) está en `pyproject.toml`; `app/asgi.py` se prueba en un subproceso.
+        run: pytest -n 4 -q -rs --cov=app --cov=plans --cov-report=term-missing
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, no `npm install`: instala exactamente lo del lock. Con
+      # `install` el CI podría estar probando otras versiones que las que se
+      # publican.
+      # `libra-ui` vuelve a repo PRIVADO el 2026-09-01 y se instala por
+      # git+https: sin credenciales `npm ci` falla al clonarlo. Mismo alias por
+      # repo que el backend, y misma verificacion del saludo.
+      - name: Configurar acceso a libra-ui
+        env:
+          LIBRA_UI_DEPLOY_KEY: ${{ secrets.LIBRA_UI_DEPLOY_KEY }}
+        run: |
+          if [ -z "$LIBRA_UI_DEPLOY_KEY" ]; then
+            echo "::error::Falta el secret LIBRA_UI_DEPLOY_KEY en este repositorio."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          printf '%s\n' "$LIBRA_UI_DEPLOY_KEY" > ~/.ssh/id_libra_ui
+          chmod 600 ~/.ssh/id_libra_ui
+          printf 'Host github-libra-ui\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_libra_ui\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+          git config --global url."git@github-libra-ui:marianocappucci/libra-ui".insteadOf "https://github.com/marianocappucci/libra-ui"
+          saludo=$(ssh -o StrictHostKeyChecking=yes -T git@github-libra-ui 2>&1 || true)
+          echo "libra-ui -> $saludo"
+          case "$saludo" in
+            *"marianocappucci/libra-ui"*) ;;
+            *) echo "::error::La deploy key no resuelve a marianocappucci/libra-ui."; exit 1 ;;
+          esac
+        working-directory: .
+
+      - run: npm ci
+
+      # El pin de libra-ui se verifica ACÁ y no sólo en local: un `npm install`
+      # a secas no re-resuelve un pin git, y el build pasa en verde contra la
+      # versión anterior (regla del 2026-07-30). `npm ci` respeta el lock, así
+      # que lo que hay que confirmar es que el lock apunte a donde dice el
+      # package.json. Mismo paso que libra-panel y libra-backoffice, que eran
+      # los únicos dos consumidores que lo tenían (2026-09-10).
+      #
+      # Se desreferencia el tag con `^{}`: los tags de esta familia son
+      # ANOTADOS, así que `rev-parse vX.Y.Z` devuelve el SHA del objeto tag y
+      # nunca coincidiría con el `resolved` del lock, que guarda el commit.
+      - name: Verificar que el pin de libra-ui es el que dice package.json
+        working-directory: frontend
+        run: |
+          TAG=$(node -p "require('./package.json').dependencies['libra-ui'].split('#')[1]")
+          RESUELTO=$(node -p "require('./package-lock.json').packages['node_modules/libra-ui'].resolved")
+          INSTALADO=$(node -p "require('./node_modules/libra-ui/package.json').version")
+          ESPERADO=$(git ls-remote https://github.com/marianocappucci/libra-ui.git "refs/tags/$TAG^{}" | cut -f1)
+          echo "package.json: $TAG"
+          echo "instalado:    $INSTALADO"
+          echo "lock:         $RESUELTO"
+          echo "commit real:  $ESPERADO"
+          if [ -z "$ESPERADO" ]; then
+            echo "::error::No se pudo resolver el commit del tag $TAG."; exit 1
+          fi
+          case "$RESUELTO" in
+            *"$ESPERADO"*) echo "OK: el lock apunta al commit de $TAG" ;;
+            *) echo "::error::El lock no apunta al commit de $TAG."; exit 1 ;;
+          esac
+
+      - name: Lint
+        run: npm run lint
+
+      # `--reporter=default` mantiene la salida legible en el log; el `junit`
+      # agregado deja además el XML que lee el gate del paso siguiente. Los dos
+      # reporters conviven: el `--outputFile.junit` le da destino sólo al
+      # segundo.
+      - name: Tests
+        run: |
+          rm -f vitest.xml
+          npm test -- --reporter=default --reporter=junit --outputFile.junit=vitest.xml
+
+      # 🔑 Mismo criterio que el `-rs` del job de backend: que la suite haya
+      # CORRIDO no se deduce de que el paso anterior haya salido en verde.
+      #
+      # 🔴 Lo que este gate agrega —y el exit code de `vitest run` NO cubre— son
+      # los tests SALTEADOS. Medido el 2026-08-22 sobre vitest 3.2.7: un
+      # `describe.skip` que envuelve la suite entera sale con **código 0**, así
+      # que un módulo que se saltea completo deja el job igual de verde que uno
+      # que corrió todo. Es el mismo agujero que el job de backend ya tapa
+      # exigiendo `skipped="0"`.
+      #
+      # 🔴 `skipped` se cuenta por ocurrencias y no con `head -1`: el
+      # `<testsuites>` raíz trae `tests`/`failures`/`errors` totales pero **no**
+      # trae `skipped` — ese atributo vive en cada `<testsuite>`. Un `head -1`
+      # leería el del primer archivo y daría por limpia una suite salteada más
+      # abajo.
+      #
+      # `failures`/`errors` son hoy redundantes con el exit code de vitest (que
+      # sí devuelve 1 con tests rojos — verificado con control positivo y
+      # negativo el 2026-08-22). Se chequean igual porque salen gratis del mismo
+      # XML y dejan de depender de que esa garantía siga valiendo.
+      - name: La suite de frontend corrio de verdad
+        run: |
+          test -f vitest.xml
+          CORRIDOS=$(grep -o 'tests="[0-9]*"' vitest.xml | head -1 | tr -dc '0-9')
+          FALLADOS=$(grep -o 'failures="[0-9]*"' vitest.xml | head -1 | tr -dc '0-9')
+          ERRORES=$(grep -o 'errors="[0-9]*"' vitest.xml | head -1 | tr -dc '0-9')
+          SALTEADOS=$(grep -o '<skipped/>' vitest.xml | wc -l)
+          echo "frontend: $CORRIDOS corridos, $FALLADOS fallados, $ERRORES con error, $SALTEADOS salteados"
+          test -n "$CORRIDOS"
+          test "$CORRIDOS" -gt 0
+          test "$FALLADOS" = "0"
+          test "$ERRORES" = "0"
+          test "$SALTEADOS" = "0"
+
+      - name: Build
+        run: npm run build
+
+      # 🔴 No es redundante con el paso de arriba. `npm run build` devuelve 0
+      # aunque `tsc -b` haya fallado con errores y no haya escrito `dist/`. Sin
+      # este chequeo el job queda verde habiendo producido nada, que es
+      # exactamente lo que el job tiene que impedir.
+      - name: El build dejo algo de verdad
+        run: test -f dist/index.html
+
+  # F2 (2026-09-05): que el CI ponga rojo un commit con un secreto. Barre los
+  # commits del PR (no toda la historia) con la configuracion de
+  # `.gitleaks.toml` en la raiz, que exime `tests/` porque ahi viven las
+  # contrasenas de prueba de la suite. Job independiente: corre en paralelo y
+  # su rojo no se mezcla con el de la suite.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

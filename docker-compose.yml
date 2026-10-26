@@ -1,0 +1,67 @@
+# Compose de DESARROLLO LOCAL. Sin dominio, sin proxy, sin red del VPS: el
+# producto todavía no tiene dev/demo (ver README.md).
+#
+#   cp .env.example .env     # y completá las contraseñas
+#   docker compose up --build
+#
+# La app queda en http://127.0.0.1:8107 (docs en /docs). La base no publica
+# ningún puerto: para mirarla, `docker compose exec librainmo-postgres psql -U librainmo`.
+
+services:
+  librainmo-postgres:
+    image: postgres:16
+    # 🔴 `TZ` en el entorno NO alcanza: la imagen graba `timezone` en el
+    # `initdb`, y una base ya creada no lo recoge. El parámetro va por comando.
+    command: postgres -c timezone=America/Argentina/Buenos_Aires
+    container_name: librainmo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: librainmo
+      POSTGRES_USER: librainmo
+      POSTGRES_PASSWORD: ${LIBRAINMO_POSTGRES_PASSWORD:?hay que definirla en el .env}
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - librainmo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U librainmo -d librainmo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [datos]
+
+  librainmo-dev:
+    build:
+      context: .
+    container_name: librainmo-dev
+    depends_on:
+      librainmo-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: 1.0
+    ports:
+      - "127.0.0.1:8107:8000"
+    volumes:
+      - ./:/app
+      - librainmo-datos:/app/data
+    # Primero las tres cadenas de migraciones (`libraauth`, `libracore` y la del dominio), después la app.
+    command: sh -c "python -m app.migrar && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:?hay que definirla en el .env}
+      - LIBRAINMO_ADMIN_USERNAME=${LIBRAINMO_ADMIN_USERNAME:-admin}
+      - LIBRAINMO_ADMIN_PASSWORD=${LIBRAINMO_ADMIN_PASSWORD:?hay que definirla en el .env}
+      - LIBRAINMO_DATABASE_URL=postgresql+psycopg://librainmo:${LIBRAINMO_POSTGRES_PASSWORD:?hay que definirla en el .env}@librainmo-postgres:5432/librainmo
+      - ENTORNO=dev
+      - DATA_DIR=/app/data
+      - TZ=America/Argentina/Buenos_Aires
+    networks: [datos]
+
+volumes:
+  librainmo-postgres-data:
+  librainmo-datos:
+
+networks:
+  datos:
+    name: librainmo-dev-datos

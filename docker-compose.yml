@@ -1,23 +1,32 @@
-# Compose de DESARROLLO LOCAL. Sin dominio, sin proxy, sin red del VPS: el
-# producto todavía no tiene dev/demo (ver README.md).
+# Instancia `dev` de LibraInmo en el VPS (`dev.librainmo.com.ar`), y entorno de desarrollo local.
+#
+# Mismo patrón que los `dev` del resto de la familia: NO es `panel_admin.py` —ese provisiona instancias de cliente y
+# la demo bajo `/srv/libra/librainmo/clientes/<slug>/`—. Un compose, dos redes, y Nginx Proxy Manager alcanza al
+# contenedor por su alias en la red compartida del VPS (`stack_stack-net`).
 #
 #   cp .env.example .env     # y completá las contraseñas
-#   docker compose up --build
+#   BUILDX_BAKE_ENTITLEMENTS_FS=0 docker compose up -d --build librainmo-dev
 #
-# La app queda en http://127.0.0.1:8107 (docs en /docs). La base no publica
-# ningún puerto: para mirarla, `docker compose exec librainmo-postgres psql -U librainmo`.
+# 🔴 **El código va horneado en la imagen** (`reglas/deploy.md`): este contenedor no monta el checkout ni corre con
+# `--reload`. Un cambio llega con `docker compose up -d --build`, que es como se despliega dev; editar el checkout
+# del VPS no cambia lo que se sirve.
+#
+# Para correrlo en una máquina sin la red del VPS: `docker network create stack_stack-net` una vez.
 
 services:
+  # 🔴 La clave del servicio lleva el nombre del producto y no es `db` ni `postgres`: Compose la convierte en alias de
+  # red, y dos composes con la misma clave en `stack-net` se turnan por el DNS interno.
   librainmo-postgres:
+    # La MISMA imagen que el CI y que las instancias: el collation viene de la imagen.
     image: postgres:16
-    # 🔴 `TZ` en el entorno NO alcanza: la imagen graba `timezone` en el
-    # `initdb`, y una base ya creada no lo recoge. El parámetro va por comando.
+    # 🔴 `TZ` en el entorno NO alcanza: la imagen graba `timezone` en el `initdb`, y una base ya creada no lo recoge.
     command: postgres -c timezone=America/Argentina/Buenos_Aires
     container_name: librainmo-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: librainmo
       POSTGRES_USER: librainmo
+      # Sin default a propósito: `:?` aborta el `up` si falta, en vez de levantar la base con una clave escrita en git.
       POSTGRES_PASSWORD: ${LIBRAINMO_POSTGRES_PASSWORD:?hay que definirla en el .env}
       TZ: America/Argentina/Buenos_Aires
     volumes:
@@ -28,6 +37,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    # Sin `ports:` a propósito: sólo se llega desde la red interna.
     networks: [datos]
 
   librainmo-dev:
@@ -42,21 +52,33 @@ services:
     mem_reservation: 256m
     cpus: 1.0
     ports:
+      # Único en el VPS: del 8100 al 8105 los usan otros productos (`ss -ltn`, 2026-10-26). Las instancias de cliente
+      # y la demo buscan desde el 8110 (`scripts/configuracion.py`).
       - "127.0.0.1:8107:8000"
     volumes:
-      - ./:/app
+      # Sólo los datos (backups ZIP, logo): el código está en la imagen.
       - librainmo-datos:/app/data
-    # Primero las tres cadenas de migraciones (`libraauth`, `libracore` y la del dominio), después la app.
-    command: sh -c "python -m app.migrar && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --reload"
+    # 🔴 Las migraciones también acá: `cmd_actualizar` las corre para los clientes y la demo, pero ESTA instancia la
+    # levanta el compose. Las mismas tres cadenas y en el mismo orden que `migraciones` en `scripts/configuracion.py`.
+    command: >-
+      sh -c "libraauth-migrar upgrade --prefijo librainmo --base dominio
+      && libracore-migrar upgrade --prefijo librainmo
+      && alembic upgrade head
+      && exec uvicorn app.asgi:app --host 0.0.0.0 --port 8000 --workers $${WEB_CONCURRENCY:-1}"
     environment:
       - SECRET_KEY=${SECRET_KEY:?hay que definirla en el .env}
       - LIBRAINMO_ADMIN_USERNAME=${LIBRAINMO_ADMIN_USERNAME:-admin}
       - LIBRAINMO_ADMIN_PASSWORD=${LIBRAINMO_ADMIN_PASSWORD:?hay que definirla en el .env}
       - LIBRAINMO_DATABASE_URL=postgresql+psycopg://librainmo:${LIBRAINMO_POSTGRES_PASSWORD:?hay que definirla en el .env}@librainmo-postgres:5432/librainmo
       - ENTORNO=dev
+      - LIBRA_SERVICE_TOKEN=${LIBRA_SERVICE_TOKEN:-}
+      - LIBRA_PANEL_TOKEN=${LIBRA_PANEL_TOKEN:-}
       - DATA_DIR=/app/data
       - TZ=America/Argentina/Buenos_Aires
-    networks: [datos]
+      - LIBRA_ENTORNO=dev
+      - LIBRA_INSTANCIA=librainmo-dev
+      - LIBRA_VERSION=${LIBRA_VERSION:-dev}
+    networks: [stack-net, datos]
 
 volumes:
   librainmo-postgres-data:
@@ -65,3 +87,6 @@ volumes:
 networks:
   datos:
     name: librainmo-dev-datos
+  stack-net:
+    external: true
+    name: stack_stack-net

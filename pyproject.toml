@@ -16,7 +16,7 @@ dependencies = [
     # para correr la cadena de `libraauth` (`libraauth-migrar`), que versiona
     # sus propias tablas.
     "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.55.0",
-    # El motor común. A diferencia de LibraView, acá el schema de `libracore`
+    # El motor común. Acá el schema de `libracore`
     # (clientes, facturas, libro de terceros, recibos, índices de ajuste) vive en
     # la MISMA base que el dominio (ADR-002). `python -m app.migrar` corre su
     # cadena (`libracore.migrar.upgrade`) antes de la del dominio.

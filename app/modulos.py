@@ -4,13 +4,13 @@ Mismo patrón que el resto de la familia: `app.state.modules` es un repositorio 
 `is_enabled(modulo)`, y `libracore.modules_gate.require_module` lo consulta en cada
 request, así que prender o apagar un módulo tiene efecto inmediato.
 
-🔑 **La tabla es la del motor.** A diferencia de LibraView, la tabla `modulos` no es del
-dominio: la crea la cadena de `libracore` (misma base, ADR-002) y es la que lee el
-backoffice (`app.database.get_modulos`/`set_addon` por `docker exec`, como en LibraCargo).
-Este repositorio no la mapea con SQLAlchemy: delega en `libracore.db.modulos` y en
-`libracore.provisioning.apply_plan_modules`, que escriben el tipo REAL de la columna
-`habilitado` (entero en unas instancias, booleano en otras) y no repiten esa lógica acá.
-`libracore.db.core` tiene que estar configurado (`crear_app()` lo hace).
+🔑 **La tabla es la del motor.** La tabla `modulos` no es del dominio: la crea la cadena de
+`libracore` (misma base, ADR-002) y es la que lee el backoffice (`app.database.get_modulos` y
+`set_addon` por `docker exec`, ver `app/database.py`). Este repositorio no la mapea con
+SQLAlchemy: delega en `libracore.db.modulos` y en `libracore.provisioning.apply_plan_modules`,
+que escriben el tipo REAL de la columna `habilitado` (entero en unas instancias, booleano en
+otras) y no repiten esa lógica acá. `libracore.db.core` tiene que estar configurado
+(`crear_app()` lo hace).
 
 Diferencias con MedLibra, a propósito:
 

@@ -4,7 +4,7 @@
 motor NO la versiona en su cadena porque vive en la base del dominio, así que la crea
 el producto.
 
-🔑 **No crea `modulos`.** En LibraView esa tabla es del dominio; acá la trae la cadena
+🔑 **No crea `modulos`.** En los productos sin el schema del motor esa tabla es del dominio; acá la trae la cadena
 de `libracore` (misma base, ADR-002 de este repo), que `python -m app.migrar` corre
 antes que ésta. Crearla de nuevo fallaría con «la relación ya existe».
 

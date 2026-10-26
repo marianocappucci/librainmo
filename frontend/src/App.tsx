@@ -2,11 +2,22 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Layout } from '@/components/Layout'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { CobrarCuota } from '@/pages/CobrarCuota'
+import { CobroDetalle } from '@/pages/CobroDetalle'
+import { Cobros } from '@/pages/Cobros'
 import { ContratoDetalle } from '@/pages/ContratoDetalle'
 import { ContratoEditar } from '@/pages/ContratoEditar'
 import { ContratoNuevo } from '@/pages/ContratoNuevo'
 import { Contratos } from '@/pages/Contratos'
+import { CuotaDetalle } from '@/pages/CuotaDetalle'
+import { Cuotas } from '@/pages/Cuotas'
+import { CuotasGenerar } from '@/pages/CuotasGenerar'
+import { FondosDeTerceros } from '@/pages/FondosDeTerceros'
+import { Gastos } from '@/pages/Gastos'
 import { Inicio } from '@/pages/Inicio'
+import { LiquidacionDetalle } from '@/pages/LiquidacionDetalle'
+import { LiquidacionNueva } from '@/pages/LiquidacionNueva'
+import { Liquidaciones } from '@/pages/Liquidaciones'
 import { Login } from '@/pages/Login'
 import { Logs } from '@/pages/Logs'
 import { PropiedadDetalle } from '@/pages/PropiedadDetalle'
@@ -36,6 +47,17 @@ export function Ruteo() {
         <Route path="/contratos/nuevo" element={<ContratoNuevo />} />
         <Route path="/contratos/:id" element={<ContratoDetalle />} />
         <Route path="/contratos/:id/editar" element={<ContratoEditar />} />
+        <Route path="/cuotas" element={<Cuotas />} />
+        <Route path="/cuotas/generar" element={<CuotasGenerar />} />
+        <Route path="/cuotas/:id" element={<CuotaDetalle />} />
+        <Route path="/cuotas/:id/cobrar" element={<CobrarCuota />} />
+        <Route path="/cobros" element={<Cobros />} />
+        <Route path="/cobros/:id" element={<CobroDetalle />} />
+        <Route path="/gastos" element={<Gastos />} />
+        <Route path="/liquidaciones" element={<Liquidaciones />} />
+        <Route path="/liquidaciones/nueva" element={<LiquidacionNueva />} />
+        <Route path="/liquidaciones/:id" element={<LiquidacionDetalle />} />
+        <Route path="/fondos-de-terceros" element={<FondosDeTerceros />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/logs" element={<Logs />} />
         {/* Las rutas no llevan guarda de rol: el permiso lo decide el servidor, y una ruta escondida que igual carga datos no protege

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { aDatetimeLocal, desdeDatetimeLocal, diaISO, fecha, fechaHora, hora, hoyISO } from './fechas'
+import {
+  aDatetimeLocal, desdeDatetimeLocal, diaISO, diasDelMes, fecha, fechaHora, hora, hoyISO, mesDe, nombreDelMes, primerDiaDelMes, ultimoDiaDelMes,
+} from './fechas'
 
 describe('fecha: dd-mm-aaaa', () => {
   it('reordena un día del calendario sin pasar por un Date (no se corre un día por la zona)', () => {
@@ -64,5 +66,34 @@ describe('datetime-local ↔ API', () => {
 
   it('es ida y vuelta', () => {
     expect(aDatetimeLocal(`${desdeDatetimeLocal('2026-10-27T09:30')}-03:00`)).toBe('2026-10-27T09:30')
+  })
+})
+
+describe('meses: lo que pide y muestra la pantalla de cuotas', () => {
+  it('cuántos días tiene cada mes, con los años bisiestos (incluido el 2100, que no lo es, y el 2000, que sí)', () => {
+    expect([1, 3, 5, 7, 8, 10, 12].map((m) => diasDelMes(2026, m))).toEqual([31, 31, 31, 31, 31, 31, 31])
+    expect([4, 6, 9, 11].map((m) => diasDelMes(2026, m))).toEqual([30, 30, 30, 30])
+    expect(diasDelMes(2026, 2)).toBe(28)
+    expect(diasDelMes(2028, 2)).toBe(29)
+    expect(diasDelMes(2100, 2)).toBe(28)
+    expect(diasDelMes(2000, 2)).toBe(29)
+  })
+
+  it('el primer y el último día de un mes, como texto ISO y sin Date', () => {
+    expect(primerDiaDelMes('2026-11')).toBe('2026-11-01')
+    expect(ultimoDiaDelMes('2026-11')).toBe('2026-11-30')
+    expect(ultimoDiaDelMes('2028-02')).toBe('2028-02-29')
+    expect(ultimoDiaDelMes('2026-12')).toBe('2026-12-31')
+    expect(primerDiaDelMes('')).toBe('')
+    expect(ultimoDiaDelMes('basura')).toBe('')
+  })
+
+  it('el mes de una fecha y su nombre en castellano', () => {
+    expect(mesDe('2026-11-15')).toBe('2026-11')
+    expect(mesDe('2026-11')).toBe('2026-11')
+    expect(mesDe(null)).toBe('')
+    expect(nombreDelMes('2026-11-01')).toBe('noviembre 2026')
+    expect(nombreDelMes('2026-01')).toBe('enero 2026')
+    expect(nombreDelMes('')).toBe('')
   })
 })

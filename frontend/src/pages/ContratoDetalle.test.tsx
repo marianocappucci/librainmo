@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ContratoDetalle } from './ContratoDetalle'
 import {
-  CLIENTES, CONCEPTO_EXPENSAS, CONCEPTO_SEGURO, CONTRATO_BORRADOR, CONTRATO_FINALIZADO, CONTRATO_RESCINDIDO, CONTRATO_VIGENTE,
+  AJUSTE_POR_INDICE, AJUSTE_YA_HECHO, CLIENTES, CONCEPTO_EXPENSAS, CONCEPTO_SEGURO, CONTRATO_BORRADOR, CONTRATO_FINALIZADO,
+  CONTRATO_RESCINDIDO, CONTRATO_VIGENTE, INDICES,
 } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
@@ -27,7 +28,13 @@ function montar(contrato: Contrato) {
 }
 
 function servirContrato(contrato: Contrato) {
-  return servidor({ [`GET /api/contratos/${contrato.id}`]: json(contrato), 'GET /api/clientes': json(CLIENTES) })
+  return servidor({
+    [`GET /api/contratos/${contrato.id}`]: json(contrato),
+    // La tarjeta del ajuste (sólo en un vigente por índice o porcentaje) pide su propuesta y el catálogo de índices.
+    [`GET /api/contratos/${contrato.id}/ajuste`]: json(AJUSTE_YA_HECHO),
+    'GET /api/contratos/ajustes/indices': json(INDICES),
+    'GET /api/clientes': json(CLIENTES),
+  })
 }
 
 const boton = (nombre: string | RegExp) => screen.queryByRole('button', { name: nombre })
@@ -585,5 +592,62 @@ describe('Contrato — los conceptos', () => {
     await waitFor(() => expect(api.de('PUT', '/api/contratos/5/conceptos/11')).toHaveLength(2))
     expect(api.de('PUT', '/api/contratos/5/conceptos/11')[1].cuerpo).toEqual({ activo: true })
     await waitFor(() => expect(screen.queryByText('De baja')).not.toBeInTheDocument())
+  })
+})
+
+describe('Contrato — la tarjeta del ajuste', () => {
+  it('🔴 un vigente por índice la muestra; uno sin ajuste, un borrador y uno cerrado no', async () => {
+    const api = servirContrato(CONTRATO_VIGENTE)
+    const { unmount } = montar(CONTRATO_VIGENTE)
+    expect(await screen.findByText('Ajuste por índice')).toBeInTheDocument()
+    expect(api.de('GET', '/api/contratos/5/ajuste')).toHaveLength(1)
+    unmount()
+
+    const fijo = { ...CONTRATO_VIGENTE, metodo_ajuste: 'fijo', indice_ajuste: null, indice_ajuste_nombre: null, periodicidad_ajuste: null }
+    for (const contrato of [fijo, CONTRATO_BORRADOR, CONTRATO_RESCINDIDO, CONTRATO_FINALIZADO]) {
+      const otra = servirContrato(contrato)
+      const { unmount: desmontar } = montar(contrato)
+      await screen.findByRole('heading', { name: contrato.numero })
+      expect(screen.queryByText(/^Ajuste por (índice|porcentaje)$/), contrato.estado).not.toBeInTheDocument()
+      expect(otra.de('GET', `/api/contratos/${contrato.id}/ajuste`)).toHaveLength(0)
+      desmontar()
+    }
+  })
+
+  it('por porcentaje se titula «Ajuste por porcentaje»', async () => {
+    const contrato = { ...CONTRATO_VIGENTE, metodo_ajuste: 'porcentaje', indice_ajuste: null, indice_ajuste_nombre: null, porcentaje_ajuste: '10.000' }
+    servirContrato(contrato)
+    montar(contrato)
+    expect(await screen.findByText('Ajuste por porcentaje')).toBeInTheDocument()
+  })
+
+  it('🔴 aplicar el ajuste actualiza la ficha: el alquiler vigente nuevo y el historial de precios con su fila, con el motivo del ajuste', async () => {
+    const user = userEvent.setup()
+    const api = servirContrato(CONTRATO_VIGENTE)
+    api.responder('GET /api/contratos/5/ajuste', json(AJUSTE_POR_INDICE))
+    const ajustado: Contrato = {
+      ...CONTRATO_VIGENTE,
+      importe_vigente: '498750.00',
+      precio_vigente_desde: '2026-09-01',
+      precios: [
+        { id: 9, vigencia_desde: '2026-09-01', vigencia_hasta: null, importe: '498750.00', motivo: 'ajuste_indice:icl', usuario: 'operador1' },
+        { ...CONTRATO_VIGENTE.precios[0], vigencia_hasta: '2026-08-31' },
+        CONTRATO_VIGENTE.precios[1],
+      ],
+    }
+    api.responder('POST /api/contratos/5/ajuste', json({ contrato: ajustado, ajuste: AJUSTE_POR_INDICE.ajuste }, 201))
+    montar(CONTRATO_VIGENTE)
+
+    await user.click(await screen.findByRole('button', { name: 'Aplicar ajuste' }))
+    // Desde acá el servidor dice que el período ya está ajustado: es lo que contesta cuando la ficha vuelve a pedir la propuesta.
+    api.responder('GET /api/contratos/5/ajuste', json(AJUSTE_YA_HECHO))
+    await user.click(await screen.findByRole('button', { name: 'Aplicar ajuste' }))
+
+    const precios = (await screen.findByText('Precio del alquiler')).closest('[data-slot="card"]') as HTMLElement
+    await waitFor(() => expect(within(precios).getAllByRole('row')).toHaveLength(4))
+    expect(within(precios).getByText('Ajuste por índice (ICL)')).toBeInTheDocument()
+    expect(within(precios).getByText('$ 498.750,00')).toBeInTheDocument()
+    // La propuesta vieja ya no se ofrece: se volvió a pedir y ahora dice que no toca.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Aplicar ajuste' })).not.toBeInTheDocument())
   })
 })

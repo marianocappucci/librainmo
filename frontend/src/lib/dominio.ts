@@ -119,20 +119,6 @@ export const PERIODICIDADES = [
   { value: 'anual', label: 'Anual' },
 ] as const satisfies readonly Opcion[]
 
-/**
- * El catálogo de índices de `libracore.indices_ajuste.INDICES`. 🟡 Copia a mano: el backend todavía no tiene un endpoint que lo
- * sirva. Cuando lo tenga, esta lista pasa a venir de la API (y a ser un `SelectBuscable`).
- */
-export const INDICES_DE_AJUSTE = [
-  { value: 'icl', label: 'ICL (BCRA)' },
-  { value: 'ipc', label: 'IPC nivel (INDEC)' },
-  { value: 'ipc_variacion', label: 'IPC, variación mensual' },
-  { value: 'cer', label: 'CER' },
-  { value: 'uva', label: 'UVA' },
-  { value: 'dolar_a3500', label: 'Dólar A 3500' },
-  { value: 'casa_propia', label: 'Casa Propia' },
-] as const satisfies readonly Opcion[]
-
 export const BASES_DE_PUNITORIO = [
   { value: 'diaria', label: 'Por día de atraso' },
   { value: 'mensual', label: 'Por mes de atraso' },
@@ -170,4 +156,80 @@ export const PAGADORES = [
 export const MOTIVOS_DE_PRECIO = [
   { value: 'inicial', label: 'Precio inicial' },
   { value: 'manual', label: 'Actualización manual' },
+  { value: 'ajuste_porcentaje', label: 'Ajuste por porcentaje' },
 ] as const satisfies readonly Opcion[]
+
+/** El motivo de un precio con nombre legible. Un ajuste por índice llega como `ajuste_indice:icl` (con la clave del índice). */
+export function etiquetaDeMotivoDePrecio(motivo: string): string {
+  if (motivo.startsWith('ajuste_indice:')) return `Ajuste por índice (${motivo.slice('ajuste_indice:'.length).toUpperCase()})`
+  return etiquetaDe(MOTIVOS_DE_PRECIO, motivo)
+}
+
+// ── Cuotas, cobros, gastos y liquidaciones (`app/models/{cuotas,cobros,liquidaciones}.py`) ──
+
+export const ESTADOS_DE_CUOTA = [
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'cobrada', label: 'Cobrada' },
+  { value: 'anulada', label: 'Anulada' },
+] as const satisfies readonly Opcion[]
+
+export function tonoDeEstadoDeCuota(estado: string): TonoEstado {
+  switch (estado) {
+    case 'pendiente': return 'atencion'
+    case 'cobrada': return 'ok'
+    default: return 'neutro'
+  }
+}
+
+/**
+ * Con qué puede pagar un inquilino: los medios de `libracore.medios_pago.ELEGIBLES` menos «cuenta corriente» (el cobro es justamente lo
+ * que salda la cuenta). 🟡 Copia a mano: el backend de LibraInmo no tiene un endpoint que los sirva (los de la familia, `GET
+ * /api/ventas/medios-pago`, son de los productos de comercio). Si el motor suma uno, hay que sumarlo acá.
+ */
+export const MEDIOS_DE_COBRO = [
+  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
+  { value: 'tarjeta_credito', label: 'Tarjeta de crédito' },
+  { value: 'mercadopago', label: 'Mercado Pago' },
+  { value: 'cuenta_dni', label: 'Cuenta DNI' },
+  { value: 'billetera', label: 'Otras billeteras' },
+  { value: 'cheque', label: 'Cheque' },
+] as const satisfies readonly Opcion[]
+
+/** Cómo recibe el propietario el neto de su liquidación (`MEDIOS_DE_PAGO` de `app/servicios/liquidaciones.py`). */
+export const MEDIOS_DE_PAGO_AL_PROPIETARIO = [
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'cheque', label: 'Cheque' },
+] as const satisfies readonly Opcion[]
+
+/** Qué parte del cobro es cada imputación a un propietario. */
+export const TIPOS_DE_IMPUTACION = [
+  { value: 'alquiler', label: 'Alquiler' },
+  { value: 'concepto', label: 'Conceptos' },
+  { value: 'punitorio', label: 'Punitorio' },
+] as const satisfies readonly Opcion[]
+
+export const CATEGORIAS_DE_GASTO = [
+  { value: 'reparacion', label: 'Reparación' },
+  { value: 'expensas_extraordinarias', label: 'Expensas extraordinarias' },
+  { value: 'impuesto', label: 'Impuesto' },
+  { value: 'servicio', label: 'Servicio' },
+  { value: 'honorarios', label: 'Honorarios' },
+  { value: 'otro', label: 'Otro' },
+] as const satisfies readonly Opcion[]
+
+export const ESTADOS_DE_LIQUIDACION = [
+  { value: 'emitida', label: 'Emitida' },
+  { value: 'pagada', label: 'Pagada' },
+  { value: 'anulada', label: 'Anulada' },
+] as const satisfies readonly Opcion[]
+
+export function tonoDeEstadoDeLiquidacion(estado: string): TonoEstado {
+  switch (estado) {
+    case 'emitida': return 'atencion'
+    case 'pagada': return 'ok'
+    default: return 'neutro'
+  }
+}

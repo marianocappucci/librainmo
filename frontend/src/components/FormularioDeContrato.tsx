@@ -24,10 +24,11 @@ import { AvisoDeError } from '@/components/listado'
 import { Button } from '@/components/ui/button'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { useClientes } from '@/hooks/use-clientes'
+import { useIndices } from '@/hooks/use-indices'
 import { contratos, mensajeDeError, propiedades } from '@/lib/api'
 import type { ContratoDetalle, ContratoEntrada, Propiedad } from '@/lib/api'
 import {
-  BASES_DE_PUNITORIO, DESTINOS_DE_PUNITORIO, ESTADOS_DE_PROPIEDAD, ESTADOS_SIN_CONTRATO, INDICES_DE_AJUSTE, METODOS_DE_AJUSTE,
+  BASES_DE_PUNITORIO, DESTINOS_DE_PUNITORIO, ESTADOS_DE_PROPIEDAD, ESTADOS_SIN_CONTRATO, METODOS_DE_AJUSTE,
   METODO_FIJO, METODO_INDICE, METODO_PORCENTAJE, MONEDAS, PERIODICIDADES, direccionCompleta, etiquetaDe,
 } from '@/lib/dominio'
 import { aCentesimas, aDecimal, numeroArgentino } from '@/lib/importes'
@@ -188,6 +189,7 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
 }) {
   const navigate = useNavigate()
   const { opciones: clientesDeLaApi, crear, error: errorDeClientes } = useClientes()
+  const { opciones: indicesDeLaApi, error: errorDeIndices } = useIndices()
   const [lista, setLista] = useState<Propiedad[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -206,6 +208,11 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
     if (!contrato || clientesDeLaApi.some((o) => o.value === String(contrato.inquilino_id))) return clientesDeLaApi
     return [...clientesDeLaApi, { value: String(contrato.inquilino_id), label: contrato.inquilino_nombre }]
   }, [clientesDeLaApi, contrato])
+  // Al editar, el índice ya elegido se ve con su nombre aunque el catálogo todavía no haya llegado.
+  const indices = useMemo(() => {
+    if (!contrato?.indice_ajuste || indicesDeLaApi.some((o) => o.value === contrato.indice_ajuste)) return indicesDeLaApi
+    return [...indicesDeLaApi, { value: contrato.indice_ajuste, label: contrato.indice_ajuste_nombre ?? contrato.indice_ajuste }]
+  }, [indicesDeLaApi, contrato])
   const opcionesDePropiedades = useMemo(() => {
     const opciones = lista.map(opcionDePropiedad)
     if (!contrato || opciones.some((o) => o.value === String(contrato.propiedad_id))) return opciones
@@ -300,12 +307,12 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
           <div className="grid gap-3 sm:grid-cols-3">
             <CampoCerrado control={form.control} name="metodo_ajuste" etiqueta="Método de ajuste" opciones={METODOS_DE_AJUSTE} />
             {metodo === METODO_INDICE && (
-              <CampoCerrado
+              <CampoBuscable
                 control={form.control}
                 name="indice_ajuste"
                 etiqueta="Índice"
-                opciones={INDICES_DE_AJUSTE}
-                placeholder="Elegir…"
+                opciones={indices}
+                placeholder="Buscar índice…"
               />
             )}
             {metodo === METODO_PORCENTAJE && (
@@ -362,7 +369,7 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
           <CampoDeTextoLargo control={form.control} name="observaciones" etiqueta="Observaciones" />
         </section>
 
-        <AvisoDeError mensaje={error ?? errorDeClientes} />
+        <AvisoDeError mensaje={error ?? errorDeClientes ?? errorDeIndices} />
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancelar}>

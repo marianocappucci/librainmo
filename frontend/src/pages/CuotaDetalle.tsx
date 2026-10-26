@@ -1,0 +1,225 @@
+/**
+ * La ficha de una cuota: sus líneas (alquiler y conceptos), el total y lo que se puede hacer según su estado (ADR-005).
+ *
+ * Pendiente: «Cobrar», «Cargar un cargo» (las expensas que llegaron después de generarla) y «Anular» con motivo. Cobrada o anulada: sólo se
+ * mira, y una cobrada enlaza al cobro. El total es lo que quedó cargado en la cuenta del inquilino; el servidor lo corrige al cargar un
+ * cargo y lo contraasienta al anular.
+ */
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft, CalendarClock, HandCoins, Plus, XCircle } from 'lucide-react'
+import { TituloPantalla } from 'libra-ui/titulo-pantalla'
+
+import { Dato } from '@/components/Dato'
+import { DialogoDeCargo } from '@/components/DialogoDeCargo'
+import { DialogoDeMotivo } from '@/components/DialogoDeMotivo'
+import { EstadoDeCuota } from '@/components/Estados'
+import { AvisoDeError } from '@/components/listado'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { cobros, contratos, cuotas, mensajeDeError } from '@/lib/api'
+import type { ConceptoDelContrato, Cobro, Cuota } from '@/lib/api'
+import { fecha, nombreDelMes } from '@/lib/fechas'
+import { pesos } from '@/lib/importes'
+
+export function CuotaDetalle() {
+  const { id } = useParams()
+  const [cuota, setCuota] = useState<Cuota | null>(null)
+  const [moneda, setMoneda] = useState('ARS')
+  const [conceptos, setConceptos] = useState<ConceptoDelContrato[]>([])
+  const [cobro, setCobro] = useState<Cobro | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(false)
+  const [anulando, setAnulando] = useState(false)
+
+  const cargar = useCallback(() => {
+    cuotas
+      .obtener(Number(id))
+      .then(async (q) => {
+        setCuota(q)
+        setError(null)
+        // El contrato da la moneda y los conceptos para «Cargar un cargo»; el cobro, si ya se cobró, para enlazarlo. Si alguno falla, la
+        // ficha sigue siendo útil: se queda con lo que tiene.
+        try {
+          const c = await contratos.obtener(q.contrato_id)
+          setMoneda(c.moneda)
+          setConceptos(c.conceptos)
+        } catch {
+          /* la ficha no depende de esto */
+        }
+        if (q.estado === 'cobrada') {
+          try {
+            const lista = await cobros.listar({ contrato_id: q.contrato_id })
+            setCobro(lista.find((x) => x.cuota_id === q.id && !x.anulado) ?? null)
+          } catch {
+            /* idem */
+          }
+        }
+      })
+      .catch((e: unknown) => setError(mensajeDeError(e)))
+  }, [id])
+
+  useEffect(() => {
+    setCuota(null)
+    setCobro(null)
+    cargar()
+  }, [cargar])
+
+  const volver = (
+    <Button asChild variant="outline">
+      <Link to="/cuotas">
+        <ArrowLeft className="size-4" />
+        Volver
+      </Link>
+    </Button>
+  )
+
+  if (!cuota) {
+    return (
+      <div className="space-y-3">
+        <TituloPantalla icono={CalendarClock} acciones={volver}>
+          Cuota
+        </TituloPantalla>
+        <AvisoDeError mensaje={error} />
+        {!error && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      </div>
+    )
+  }
+
+  const pendiente = cuota.estado === 'pendiente'
+
+  return (
+    <div className="space-y-3">
+      <TituloPantalla
+        icono={CalendarClock}
+        acciones={
+          <>
+            {pendiente && (
+              <>
+                <Button asChild>
+                  <Link to={`/cuotas/${cuota.id}/cobrar`}>
+                    <HandCoins className="size-4" />
+                    Cobrar
+                  </Link>
+                </Button>
+                <Button variant="outline" onClick={() => setAnulando(true)}>
+                  <XCircle className="size-4" />
+                  Anular
+                </Button>
+              </>
+            )}
+            {volver}
+          </>
+        }
+      >
+        Cuota de {nombreDelMes(cuota.periodo_desde)}
+      </TituloPantalla>
+      <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        {cuota.numero_contrato} · {cuota.inquilino_nombre}
+        <EstadoDeCuota estado={cuota.estado} />
+      </p>
+
+      <AvisoDeError mensaje={error} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Datos de la cuota</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Dato etiqueta="Contrato">
+              <Link to={`/contratos/${cuota.contrato_id}`} className="underline underline-offset-4">
+                {cuota.numero_contrato}
+              </Link>
+            </Dato>
+            <Dato etiqueta="Inquilino">{cuota.inquilino_nombre}</Dato>
+            <Dato etiqueta="Período">
+              {fecha(cuota.periodo_desde)} al {fecha(cuota.periodo_hasta)}
+            </Dato>
+            <Dato etiqueta="Prorrateo">
+              {cuota.prorrateada ? `${cuota.dias_cubiertos} de ${cuota.dias_del_periodo} días` : 'Mes entero'}
+            </Dato>
+            <Dato etiqueta="Emitida">{fecha(cuota.fecha_emision)}</Dato>
+            <Dato etiqueta="Vence">{fecha(cuota.fecha_vencimiento)}</Dato>
+            <Dato etiqueta="Estado">
+              <EstadoDeCuota estado={cuota.estado} />
+            </Dato>
+            {cuota.estado === 'cobrada' && (
+              <Dato etiqueta="Cobro">
+                {cobro ? (
+                  <Link to={`/cobros/${cobro.id}`} className="underline underline-offset-4">
+                    Cobrada el {fecha(cobro.fecha)}: ver el cobro
+                  </Link>
+                ) : (
+                  'Cobrada'
+                )}
+              </Dato>
+            )}
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-base">Qué incluye</CardTitle>
+          {pendiente && (
+            <Button variant="outline" size="sm" onClick={() => setCargando(true)}>
+              <Plus className="size-4" />
+              Cargar un cargo
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Descripción</TableHead>
+                <TableHead className="text-right">Importe</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cuota.lineas.map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell>{l.descripcion}</TableCell>
+                  <TableCell className="text-right">{pesos(l.importe, moneda)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="font-medium">Total</TableCell>
+                <TableCell className="text-right font-semibold">{pesos(cuota.total, moneda)}</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {cargando && (
+        <DialogoDeCargo
+          abierto
+          cuota={cuota}
+          conceptos={conceptos}
+          moneda={moneda}
+          onCerrar={() => setCargando(false)}
+          onCambio={(q) => {
+            setCargando(false)
+            setCuota(q)
+          }}
+        />
+      )}
+      <DialogoDeMotivo
+        abierto={anulando}
+        titulo={`Anular la cuota de ${nombreDelMes(cuota.periodo_desde)}`}
+        descripcion="Se contraasienta el cargo de la cuenta del inquilino y el mes se puede volver a generar. Sólo se anula una cuota pendiente."
+        confirmar="Anular cuota"
+        onCerrar={() => setAnulando(false)}
+        onConfirmar={async (motivo) => {
+          setCuota(await cuotas.anular(cuota.id, motivo))
+          setAnulando(false)
+        }}
+      />
+    </div>
+  )
+}

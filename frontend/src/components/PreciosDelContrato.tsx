@@ -11,7 +11,7 @@ import { DataTable } from 'libra-ui/data-table'
 
 import { Button } from '@/components/ui/button'
 import type { PrecioDelContrato } from '@/lib/api'
-import { MOTIVOS_DE_PRECIO, etiquetaDe } from '@/lib/dominio'
+import { etiquetaDeMotivoDePrecio } from '@/lib/dominio'
 import { fecha } from '@/lib/fechas'
 import { pesos } from '@/lib/importes'
 
@@ -37,7 +37,7 @@ export function PreciosDelContrato({ precios, moneda, puedeActualizar, onActuali
         header: 'Motivo',
         size: 200,
         meta: { stretch: true },
-        cell: ({ row }) => etiquetaDe(MOTIVOS_DE_PRECIO, row.original.motivo),
+        cell: ({ row }) => etiquetaDeMotivoDePrecio(row.original.motivo),
       },
       { accessorKey: 'usuario', header: 'Cargó', size: 140 },
     ],

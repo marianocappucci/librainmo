@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ContratoNuevo } from './ContratoNuevo'
-import { CLIENTES, CONTRATO_BORRADOR, PROPIEDAD, PROPIEDAD_ALQUILADA, PROPIEDAD_VENDIDA } from '@/test/datos'
+import { CLIENTES, CONTRATO_BORRADOR, INDICES, PROPIEDAD, PROPIEDAD_ALQUILADA, PROPIEDAD_VENDIDA } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -26,6 +26,7 @@ function base() {
   return servidor({
     'GET /api/propiedades': json([PROPIEDAD, PROPIEDAD_ALQUILADA, PROPIEDAD_VENDIDA]),
     'GET /api/clientes': json(CLIENTES),
+    'GET /api/contratos/ajustes/indices': json(INDICES),
     'POST /api/contratos': json(CONTRATO_BORRADOR, 201),
   })
 }
@@ -71,10 +72,13 @@ describe('Contrato nuevo — los campos según el método de ajuste', () => {
     expect(screen.getByRole('combobox', { name: 'Índice' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Se ajusta cada' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Porcentaje de cada ajuste')).not.toBeInTheDocument()
+    // 🔴 El catálogo viene de la API (no una lista fija), se busca escribiendo y marca el que se carga a mano.
     await user.click(screen.getByRole('combobox', { name: 'Índice' }))
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
-      'ICL (BCRA)', 'IPC nivel (INDEC)', 'IPC, variación mensual', 'CER', 'UVA', 'Dólar A 3500', 'Casa Propia',
-    ])
+    const opciones = await screen.findAllByRole('option')
+    expect(opciones).toHaveLength(7)
+    expect(opciones[0]).toHaveTextContent('Índice para Contratos de Locación (ICL, base 30-06-2020 = 1)')
+    expect(opciones[6]).toHaveTextContent('Coeficiente Casa Propia')
+    expect(opciones[6]).toHaveTextContent('se carga a mano')
     await user.keyboard('{Escape}')
 
     await enviar(user)
@@ -82,7 +86,7 @@ describe('Contrato nuevo — los campos según el método de ajuste', () => {
     expect(screen.getByText('Elegí cada cuánto se ajusta.')).toBeInTheDocument()
     expect(api.de('POST', '/api/contratos')).toHaveLength(0)
 
-    await elegirCerrado(user, 'Índice', 'ICL (BCRA)')
+    await elegirEnBuscable(user, screen.getByRole('combobox', { name: 'Índice' }), /ICL/)
     await elegirCerrado(user, 'Se ajusta cada', 'Trimestral')
     await enviar(user)
     await waitFor(() => expect(api.de('POST', '/api/contratos')).toHaveLength(1))
@@ -129,7 +133,7 @@ describe('Contrato nuevo — los campos según el método de ajuste', () => {
     await cargarLoBasico(user)
 
     await elegirCerrado(user, 'Método de ajuste', 'Índice oficial')
-    await elegirCerrado(user, 'Índice', 'IPC nivel (INDEC)')
+    await elegirEnBuscable(user, screen.getByRole('combobox', { name: 'Índice' }), /IPC nivel/)
     await elegirCerrado(user, 'Se ajusta cada', 'Anual')
     await elegirCerrado(user, 'Método de ajuste', 'Sin ajuste (importe fijo)')
     await enviar(user)

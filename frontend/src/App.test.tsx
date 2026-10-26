@@ -22,7 +22,13 @@ function servirComo(rol: string | null, terminos: object = TERMINOS_AL_DIA) {
     'GET /api/usuarios': json([]),
     'GET /api/propiedades': json([]),
     'GET /api/contratos': json([]),
+    'GET /api/cuotas': json([]),
+    'GET /api/cobros': json([]),
+    'GET /api/gastos': json([]),
+    'GET /api/liquidaciones': json([]),
+    'GET /api/reportes/fondos-de-terceros': json({ a_pagar_a_propietarios: [], total_a_pagar: '0.00', inquilinos_deudores: [], total_adeudado: '0.00' }),
     'GET /api/clientes': json([]),
+    'GET /api/contratos/ajustes/indices': json([]),
   })
 }
 
@@ -69,7 +75,7 @@ describe('Sesión y Términos', () => {
 })
 
 describe('El menú sigue la matriz de roles', () => {
-  const TODAS = ['Inicio', 'Propiedades', 'Contratos', 'Usuarios', 'Actividad']
+  const TODAS = ['Inicio', 'Propiedades', 'Contratos', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros', 'Usuarios', 'Actividad']
 
   async function menuDe(rol: string) {
     servirComo(rol)
@@ -82,8 +88,10 @@ describe('El menú sigue la matriz de roles', () => {
     expect(await menuDe('admin')).toEqual(TODAS)
   })
 
-  it('el operador ve el día a día —Inicio, Propiedades y Contratos— y no la administración de la instancia', async () => {
-    expect(await menuDe('operador')).toEqual(['Inicio', 'Propiedades', 'Contratos'])
+  it('el operador ve el día a día —propiedades, contratos, cobranza y propietarios— y no la administración de la instancia', async () => {
+    expect(await menuDe('operador')).toEqual([
+      'Inicio', 'Propiedades', 'Contratos', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros',
+    ])
   })
 
   it('muestra el rol con su nombre legible, no el código', async () => {
@@ -112,6 +120,21 @@ describe('Las pantallas de propiedades y contratos cuelgan del menú', () => {
     expect(await screen.findByRole('heading', { name: titulo })).toBeInTheDocument()
     // Los detalles (`/contratos/:id`, `/propiedades/:id`) heredan la entrada de su listado.
     const entrada = ruta.startsWith('/propiedades') ? 'Propiedades' : 'Contratos'
+    await waitFor(() => expect(enMenu(entrada)).toHaveAttribute('data-active', 'true'))
+  })
+
+  it.each([
+    ['/cuotas', 'Cuotas', 'Cuotas'],
+    ['/cuotas/generar', 'Generar las cuotas del mes', 'Cuotas'],
+    ['/cobros', 'Cobros', 'Cobros'],
+    ['/gastos', 'Gastos', 'Gastos'],
+    ['/liquidaciones', 'Liquidaciones', 'Liquidaciones'],
+    ['/liquidaciones/nueva', 'Nueva liquidación', 'Liquidaciones'],
+    ['/fondos-de-terceros', 'Fondos de terceros', 'Fondos de terceros'],
+  ])('%s abre «%s» y deja marcada la entrada «%s» del menú', async (ruta, titulo, entrada) => {
+    servirComo('operador')
+    montar(ruta)
+    expect(await screen.findByRole('heading', { name: titulo })).toBeInTheDocument()
     await waitFor(() => expect(enMenu(entrada)).toHaveAttribute('data-active', 'true'))
   })
 

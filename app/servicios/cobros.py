@@ -216,6 +216,11 @@ def anular(sesion: Session, cobro_id: int, *, motivo: str, usuario: str) -> dict
         raise Conflicto("El cobro ya está anulado.")
     if not (motivo or "").strip():
         raise Invalido("Anular un cobro pide un motivo.")
+    from app.models.liquidaciones import LiquidacionItem
+
+    asientos = [x.asiento_id for x in cobro.imputaciones]
+    if asientos and sesion.scalar(select(LiquidacionItem.id).where(LiquidacionItem.asiento_id.in_(asientos))):
+        raise Conflicto("El cobro ya está en una liquidación al propietario: anulá primero la liquidación.")
     q = sesion.get(Cuota, cobro.cuota_id)
     concepto = f"Anulación del cobro {cobro.id}: {motivo.strip()}"
     for asiento in [cobro.asiento_id, cobro.asiento_punitorio_id, *(x.asiento_id for x in cobro.imputaciones)]:

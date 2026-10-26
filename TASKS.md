@@ -26,3 +26,5 @@ Trabajo concreto y vigente.
 
 - 🔸 **Motor:** `libracore.db.recibos.anular_recibo` sin `conn=`. El cobro anulado y su recibo no van en la misma transacción (ADR-006).
 - 🔸 **Pago parcial de una cuota** (ADR-006): definir con el piloto cómo se imputa.
+- 🔸 **[H] IVA de la comisión** (ADR-007): ¿va incluida o aparte? Con el contador del piloto, antes de facturarla.
+- 🔸 **Neto negativo** (ADR-007): cómo se arrastra la deuda del propietario a la liquidación siguiente.

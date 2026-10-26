@@ -14,6 +14,7 @@ from app.models.base import Base
 from app.models.cobros import Cobro, CobroImputacion
 from app.models.contratos import ConceptoContrato, Contrato, ContratoPrecio, Garantia
 from app.models.cuotas import Cuota, CuotaLinea
+from app.models.liquidaciones import Gasto, GastoImputacion, Liquidacion, LiquidacionItem
 from app.models.propiedades import Propiedad, Titular
 
 __all__ = [
@@ -26,6 +27,10 @@ __all__ = [
     "Cuota",
     "CuotaLinea",
     "Garantia",
+    "Gasto",
+    "GastoImputacion",
+    "Liquidacion",
+    "LiquidacionItem",
     "Propiedad",
     "Titular",
 ]

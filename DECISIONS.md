@@ -136,3 +136,22 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
 5. **Anular** contraasienta todo, anula el recibo y deja la cuota pendiente. 🔸 `anular_recibo` del motor no acepta
    `conn=` todavía: el recibo se anula después de confirmar (pendiente del motor, anotado en `TASKS.md`).
 6. Medios: los del motor (`libracore.medios_pago`) menos «cuenta corriente»; tienen que sumar el total.
+
+## ADR-007 — Gastos, liquidación al propietario y fondos de terceros (fase 1, tanda 2c)
+
+**Estado:** aceptada (2026-10-26).
+
+**Decisión.**
+1. **Un gasto por cuenta del propietario** (reparación, impuesto) se reparte entre los titulares por su porcentaje y es
+   un cargo en la cuenta de cada uno.
+2. **La liquidación toma lo no liquidado hasta una fecha** (imputaciones de cobros y de gastos). Un asiento se liquida
+   una sola vez (`liquidacion_items.asiento_id` único), y un cobro o un gasto liquidado no se anula hasta anular la
+   liquidación.
+3. **La comisión es por contrato, sobre el alquiler cobrado** (no sobre conceptos ni punitorio), redondeada por ítem, y
+   es un cargo en la cuenta del propietario. 🔸 **Se toma con IVA incluido**: si la inmobiliaria la factura con IVA
+   aparte, se define con su contador antes de facturar (tanda 3).
+4. **El pago del neto** (transferencia, efectivo o cheque) es otro cargo: la cuenta queda en cero por lo liquidado.
+5. **No se emite con neto negativo**: la deuda del propietario con la inmobiliaria y cómo se arrastra es una regla del
+   piloto que falta.
+6. **Fondos de terceros** (`GET /api/reportes/fondos-de-terceros`): lo que se les debe a los propietarios (tiene que
+   estar en la cuenta de la inmobiliaria) y lo que deben los inquilinos, desde los saldos del libro del motor.

@@ -313,6 +313,11 @@ jobs:
   # su rojo no se mezcla con el de la suite.
   gitleaks:
     runs-on: ubuntu-latest
+    # La Action lista los commits del PR (`GET /pulls/{n}/commits`): con sólo `contents: read` contestó 403
+    # «Resource not accessible by integration» en el primer PR de este repo (2026-10-26).
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:

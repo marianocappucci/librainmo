@@ -118,3 +118,21 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
    generar o después). No se prorratean. Los que paga el propietario no van en la cuota.
 6. **Cada cuota es un cargo en la cuenta del inquilino** (`cc_asientos`, rol `inquilino`), en la misma transacción.
    Agregarle una línea corrige el asiento; anularla lo contraasienta. El importe queda congelado (`precio_id`).
+
+## ADR-006 — El cobro de una cuota: punitorio, reparto entre titulares y recibo del motor (fase 1, tanda 2b)
+
+**Estado:** aceptada (2026-10-26).
+
+**Decisión.**
+1. **Se cobra la cuota entera** más el punitorio. El pago parcial queda afuera: repartir un pago a cuenta entre
+   alquiler, conceptos y titulares pide reglas de imputación que el piloto todavía no definió.
+2. **El punitorio es la cuenta del motor** (`libracore.mora.calcular_punitorio`): interés simple desde el vencimiento,
+   con la gracia del contrato y el vencimiento corrido al día hábil. Se puede **condonar** y queda cuánto era.
+3. **La inmobiliaria cobra como mandataria.** Haber del inquilino por el total; haber de cada titular por su parte del
+   alquiler y de los conceptos (por tipo: el alquiler es la base de la comisión); el punitorio va al propietario sólo
+   con `punitorio_para='propietario'`. El reparto cierra al centavo (el último titular absorbe el redondeo).
+4. **El recibo es del motor** (`emitir_recibo_de_asiento`, ADR-087 del motor, v1.197.0), «por cuenta y orden de» los
+   titulares, en la misma transacción. PDF en `GET /api/cobros/{id}/recibo.pdf`.
+5. **Anular** contraasienta todo, anula el recibo y deja la cuota pendiente. 🔸 `anular_recibo` del motor no acepta
+   `conn=` todavía: el recibo se anula después de confirmar (pendiente del motor, anotado en `TASKS.md`).
+6. Medios: los del motor (`libracore.medios_pago`) menos «cuenta corriente»; tienen que sumar el total.

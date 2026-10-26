@@ -37,3 +37,10 @@ cc_asientos = Table(
     Column("debe", Numeric, nullable=False),
     Column("haber", Numeric, nullable=False),
 )
+
+#: Los recibos del motor (`libracore.recibos`): el del cobro de una cuota sale de su asiento (ADR-087 del motor).
+recibos = Table(
+    "recibos", MOTOR,
+    Column("id", BigInteger, primary_key=True),
+    Column("numero", BigInteger, nullable=False),
+)

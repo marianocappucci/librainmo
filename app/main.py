@@ -40,7 +40,7 @@ from app.errores import ErrorDeDominio
 from app.modulos import ModuleRepository, exigir_modulo
 from app.roles import ROLES, TODOS
 from app.routers import auth as auth_router
-from app.routers import contratos, cuotas, propiedades, salud
+from app.routers import cobros, contratos, cuotas, propiedades, salud
 from app.routers import usuarios as usuarios_router
 
 #: Qué entra al log de actividad: `{clase del modelo: nombre legible}`.
@@ -60,6 +60,8 @@ AUDITABLES: dict[str, str] = {
     "ConceptoContrato": "concepto de contrato",
     "Cuota": "cuota",
     "CuotaLinea": "línea de cuota",
+    "Cobro": "cobro",
+    "CobroImputacion": "imputación de cobro",
 }
 
 
@@ -168,6 +170,8 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     app.include_router(propiedades.router)
     app.include_router(contratos.router)
     app.include_router(cuotas.router)
+    app.include_router(cobros.de_cuotas)
+    app.include_router(cobros.router)
 
     # 🔴 `prefix="/api/logs"` y NO el `/logs` por default: la SPA tiene su
     # pantalla en `/logs`, y FastAPI resuelve sus rutas antes que el catch-all.

@@ -55,7 +55,7 @@ ABL_DUENA = {"concepto": "abl", "paga": "propietario", "importe": "18000"}
 
 
 def test_el_primer_mes_se_prorratea_y_no_vence_antes_de_emitirse(admin):
-    k = _vigente(admin, conceptos=(EXPENSAS, SEGURO, ABL_DUENA))
+    _vigente(admin, conceptos=(EXPENSAS, SEGURO, ABL_DUENA))
     r = admin.post("/api/cuotas/previsualizar", json={"ancla": "2026-11-25"}).json()
     assert r["ya_generadas"] == [] and r["bloqueadas"] == []
     p = r["propuestas"][0]

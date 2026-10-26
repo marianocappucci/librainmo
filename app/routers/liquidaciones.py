@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app import tiempo
@@ -14,6 +14,7 @@ from app.modulos import exigir_modulo
 from app.roles import ROLES
 from app.schemas.liquidaciones import GastoEntrada, LiquidacionEntrada, MotivoEntrada, PagoEntrada
 from app.servicios import gastos as servicio_gastos
+from app.servicios import liquidacion_pdf
 from app.servicios import liquidaciones as servicio
 
 _DEPENDENCIAS = [*exigir_modulo("alquileres"), Depends(require_rol(*ROLES))]
@@ -70,6 +71,13 @@ def emitir(datos: LiquidacionEntrada, sesion: Session = Depends(obtener_sesion),
 @router.get("/{liquidacion_id}")
 def obtener(liquidacion_id: int, sesion: Session = Depends(obtener_sesion)):
     return servicio.obtener(sesion, liquidacion_id)
+
+
+@router.get("/{liquidacion_id}/pdf")
+def pdf(liquidacion_id: int, sesion: Session = Depends(obtener_sesion)):
+    liq = servicio.obtener(sesion, liquidacion_id)
+    return Response(liquidacion_pdf.generar(liq), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="liquidacion-{liq["numero"]}.pdf"'})
 
 
 @router.post("/{liquidacion_id}/pagar")

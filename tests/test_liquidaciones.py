@@ -143,3 +143,18 @@ def test_la_busqueda_de_gastos(admin, mes):
         mes["gasto"]["id"]]
     assert admin.get("/api/gastos", params={"desde": "2026-12-01"}).json() == []
     assert admin.get(f"/api/gastos/{mes['gasto']['id']}").json()["comprobante"] == "FC B 0001-00000123"
+
+
+def test_el_pdf_de_la_liquidacion(admin, mes):
+    import io
+
+    from pypdf import PdfReader
+
+    liq = admin.post("/api/liquidaciones", json={"propietario_id": mes["uno"], "fecha": "2026-11-30",
+                                                 "hasta": "2026-11-30"}).json()
+    admin.post(f"/api/liquidaciones/{liq['id']}/pagar", json={"fecha": "2026-12-01", "medio_pago": "transferencia"})
+    r = admin.get(f"/api/liquidaciones/{liq['id']}/pdf")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    texto = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages)
+    for esperado in ("Liquidación L-000001", "Dueña Uno", "Cambio del calefón", "$ 162.000,00", "Pagada el 01-12-2026"):
+        assert esperado in texto, esperado

@@ -70,6 +70,8 @@ RUN uv sync --frozen --no-dev --no-editable
 
 COPY alembic.ini ./
 COPY migrations ./migrations
+# Los scripts de alta y la semilla de la demo corren adentro del contenedor (`panel_admin`, `semilla_demo`).
+COPY scripts ./scripts
 
 # El build de la SPA va FUERA de /app, por lo mismo que el venv: el compose de dev
 # monta `./:/app` entero (para el `--reload`) y taparía cualquier cosa copiada ahí.

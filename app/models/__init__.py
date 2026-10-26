@@ -1,8 +1,8 @@
 """Los modelos del dominio de LibraInmo.
 
-Hoy no hay ninguno: el esqueleto sólo trae la `Base` (con la convención de nombres de
-constraints) y el reloj. Las tablas de propiedades, titulares y contratos entran con la
-fase 1 del `ROADMAP.md`, cada una con su revisión en `migrations/versions/`.
+La `Base` trae la convención de nombres de constraints y el reloj. Cada tabla entra con su
+revisión en `migrations/versions/`. Las tablas del motor que el dominio referencia
+(`clients`) están en una `MetaData` aparte (`app/models/motor.py`).
 
 🔴 **Tampoco hay `ModuloRow`.** Acá la tabla `modulos` no es del dominio:
 el schema de `libracore` (que vive en la misma base, ADR-002) ya trae la suya, con otra
@@ -11,5 +11,7 @@ caben en un schema. `app/modulos.py` lee y escribe la del motor.
 """
 
 from app.models.base import Base
+from app.models.contratos import ConceptoContrato, Contrato, ContratoPrecio, Garantia
+from app.models.propiedades import Propiedad, Titular
 
-__all__ = ["Base"]
+__all__ = ["Base", "ConceptoContrato", "Contrato", "ContratoPrecio", "Garantia", "Propiedad", "Titular"]

@@ -13,7 +13,6 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from libraauth import migrar as migrar_libraauth
 from sqlalchemy import create_engine, inspect, text
 
 from app.db import (
@@ -167,16 +166,23 @@ def test_la_base_en_otra_revision_no_pasa_la_guarda(base_vacia):
 
 
 def test_la_app_no_arranca_si_falta_la_cadena_de_libracore(base_vacia, tmp_path, monkeypatch):
-    """Con `libraauth` y el dominio al día pero sin el schema del motor, `crear_app()` corta y dice qué correr.
+    """Con `libraauth` y el dominio al día pero la cadena del motor sin versión, `crear_app()` corta y dice qué correr.
 
     Es la guarda que le faltaba a `libracore.db.core` (SQL crudo): sin ella la app levanta y falla
-    en la primera consulta a una tabla que no está.
+    en la primera consulta a una tabla que no está. Desde la `0002` el dominio no se puede migrar sin el
+    motor (sus claves foráneas apuntan a `clients`), así que se migra todo y se le saca la versión al motor:
+    es la base a la que alguien le corrió las cadenas a mano y salteó la del motor en un deploy.
     """
     from app.config import Config
     from app.main import crear_app
 
-    migrar_libraauth.upgrade(base_vacia)
-    command.upgrade(configuracion_del_dominio(base_vacia), "head")
+    migrar(base_vacia)
+    motor = create_engine(base_vacia)
+    try:
+        with motor.begin() as conexion:
+            conexion.execute(text("DROP TABLE alembic_version"))
+    finally:
+        motor.dispose()
     monkeypatch.setenv("LIBRAINMO_ADMIN_PASSWORD", "clave-de-prueba")
     config = Config(database_url=base_vacia, entorno="test", directorio_de_datos=str(tmp_path / "datos"))
     with pytest.raises(EsquemaDesactualizado, match="libracore"):

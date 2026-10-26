@@ -21,6 +21,7 @@ from libraauth.auth_events import AuthEventRepository
 from libraauth.bootstrap import ensure_default_admin
 from libraauth.migrar import exigir_schema_al_dia
 from libraauth.terminos import TerminosRepository, build_terminos_router
+from libracore.clientes_router import build_clientes_router
 from libracore.config_router import (
     build_backup_router,
     build_empresa_admin_router,
@@ -35,10 +36,10 @@ from app.auditoria import COLUMNAS_OCULTAS, etiqueta_segura
 from app.auth import UserRepository, construir_session_auth, require_admin, require_rol
 from app.config import Config
 from app.errores import ErrorDeDominio
-from app.modulos import ModuleRepository
+from app.modulos import ModuleRepository, exigir_modulo
 from app.roles import ROLES, TODOS
 from app.routers import auth as auth_router
-from app.routers import salud
+from app.routers import contratos, propiedades, salud
 from app.routers import usuarios as usuarios_router
 
 #: Qué entra al log de actividad: `{clase del modelo: nombre legible}`.
@@ -46,11 +47,17 @@ from app.routers import usuarios as usuarios_router
 #: Es una lista **blanca** a propósito: una tabla nueva no entra sola, así que
 #: agregar un modelo obliga a decidir si su historial le importa a alguien.
 #:
-#: Vacía hasta que haya dominio (fase 1 del `ROADMAP.md`). Las filas del motor
-#: (`clients`, `facturas`, `cc_asientos`…) son SQL crudo de `libracore`, no modelos
-#: de SQLAlchemy, así que no pasan por este log: su historia es el propio libro
-#: (el contraasiento) y la bitácora del motor.
-AUDITABLES: dict[str, str] = {}
+#: Las filas del motor (`clients`, `facturas`, `cc_asientos`…) son SQL crudo de
+#: `libracore`, no modelos de SQLAlchemy, así que no pasan por este log: su historia
+#: es el propio libro (el contraasiento) y la bitácora del motor.
+AUDITABLES: dict[str, str] = {
+    "Propiedad": "propiedad",
+    "Titular": "titular de propiedad",
+    "Contrato": "contrato",
+    "ContratoPrecio": "precio de contrato",
+    "Garantia": "garantía de contrato",
+    "ConceptoContrato": "concepto de contrato",
+}
 
 
 def _instancia_a_respaldar(config: Config) -> Instancia:
@@ -143,8 +150,13 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # salir del gate.
     app.include_router(build_terminos_router())
 
-    # Los routers de la administración de alquileres entran acá (fase 1), cada uno con
-    # `exigir_modulo("alquileres")` y el grupo de roles que corresponda en `app/roles.py`.
+    # La administración de alquileres: cada router declara `exigir_modulo("alquileres")` y sus roles.
+    # Los clientes (inquilinos, propietarios, garantes) son los del motor, con su router: es el que usa
+    # `SelectCliente` de libra-ui para elegir y dar de alta en el lugar.
+    app.include_router(build_clientes_router(),
+                       dependencies=[*exigir_modulo("alquileres"), Depends(require_rol(*ROLES))])
+    app.include_router(propiedades.router)
+    app.include_router(contratos.router)
 
     # 🔴 `prefix="/api/logs"` y NO el `/logs` por default: la SPA tiene su
     # pantalla en `/logs`, y FastAPI resuelve sus rutas antes que el catch-all.

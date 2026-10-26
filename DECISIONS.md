@@ -73,3 +73,28 @@ página `inmobiliaria-administracion-alquileres-diseno` del wiki.
     recorre las rutas de `/api` y exige el gate en toda la que no sea administración.
 - Consecuencias: si el piloto necesita un rol de sólo lectura (un contador) o de cobranza sin acceso
   a liquidaciones, se agrega como grupo en `roles.py` y como fila en `test_permisos.py`.
+
+## ADR-004 — Propiedades, titulares y contratos (fase 1, tanda 1)
+
+**Estado:** aceptada (2026-10-26).
+
+**Contexto.** El primer bloque del dominio: qué administra la inmobiliaria, de quién es y en qué condiciones se
+alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.md`.
+
+**Decisión.**
+1. **Inquilinos, propietarios y garantes son clientes del motor** (`clients`), con su router
+   (`libracore.clientes_router`) bajo el módulo `alquileres`. Las claves foráneas del dominio apuntan a una
+   declaración mínima de esa tabla en una `MetaData` aparte (`app/models/motor.py`), como LibraCargo: la crea la
+   cadena del motor y el chequeo del esquema compara sólo el dominio.
+2. **Los titulares se reemplazan juntos y suman 100** (`PUT /api/propiedades/{id}/titulares`). Cargarlos de a uno
+   deja estados intermedios que la liquidación no sabría repartir.
+3. **«Alquilada» no se elige a mano**: la pone el contrato al activarse y la saca al rescindirse o finalizar.
+4. **El ciclo del contrato es `borrador` → `vigente` → `rescindido` | `finalizado`.** Un borrador se edita entero,
+   también su importe inicial; uno vigente sólo cambia sus observaciones. Activar exige titulares completos y que la
+   propiedad no tenga otro contrato vigente. Un borrador se borra; un contrato que estuvo vigente, no.
+5. **El alquiler tiene precio con vigencia** (`contrato_precios`, la forma de LibraDesk): uno nuevo cierra el vigente
+   el día antes. El ajuste por índice valida la clave contra el catálogo del motor (`libracore.indices_ajuste`).
+6. **Los importes y porcentajes salen de la API como texto decimal**, con la escala de su columna
+   (`app/servicios/montos.py`): un `float` no tiene centavos exactos, y esto es plata de terceros.
+7. **Las reglas viven en el servicio, no sólo en pydantic**: la importación de contratos va a llamar al servicio
+   directo.

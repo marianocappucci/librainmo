@@ -33,6 +33,7 @@ from libracore.config_router import (
     build_empresa_router,
 )
 from libracore.db import core as libracore_core
+from libracore.estado_del_sistema import build_estado_del_sistema_router
 from libracore.indices_ajuste import INDICES, IndiceFaltante
 from libracore.modules_gate import require_module
 from libracore.resguardo_enlace import build_resguardo_enlace_router
@@ -46,6 +47,7 @@ from app.auditoria import COLUMNAS_OCULTAS, etiqueta_segura
 from app.auth import (
     UserRepository,
     construir_session_auth,
+    get_current_user,
     require_admin,
     require_admin_o_servicio_o_panel,
     require_rol,
@@ -269,6 +271,13 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
             reabrir_conexiones=motor.dispose,
         ),
         dependencies=[Depends(require_admin)],
+    )
+    # La barra de estado del pie (libracore ADR-075, libra-ui ADR-083), la de los otros ocho: usuario, versión y el
+    # último respaldo, en una consulta. La abre cualquier rol; lo que ve cada uno lo decide el motor (el respaldo, sólo
+    # el admin). LibraInmo no factura con ARCA todavía ni tiene LibraEdge: esos bloques salen `null`.
+    app.include_router(
+        build_estado_del_sistema_router(usuario_actual=get_current_user, backups_dir=backups_dir),
+        dependencies=[Depends(require_rol(*TODOS))],
     )
 
     # La copia externa: el administrador conecta el Google Drive o el Dropbox de la inmobiliaria desde Configuración →

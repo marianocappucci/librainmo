@@ -28,6 +28,7 @@ function servirComo(rol: string | null, terminos: object = TERMINOS_AL_DIA) {
     'GET /api/liquidaciones': json([]),
     'GET /api/reportes/fondos-de-terceros': json({ a_pagar_a_propietarios: [], inquilinos_deudores: [], totales: [{ moneda: 'ARS', a_pagar: '0.00', adeudado: '0.00' }] }),
     'GET /api/clientes': json([]),
+    'GET /api/config/empresa': json({ empresa_nombre: 'Inmobiliaria Ficticia', empresa_direccion: '', empresa_cuit: '', empresa_telefono: '', empresa_email: '', empresa_iibb: '', empresa_iva_condition: 'Monotributista', empresa_inicio_actividades: '' }),
     'GET /api/contratos/ajustes/indices': json([]),
   })
 }
@@ -75,7 +76,10 @@ describe('Sesión y Términos', () => {
 })
 
 describe('El menú sigue la matriz de roles', () => {
-  const TODAS = ['Inicio', 'Propiedades', 'Contratos', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros', 'Usuarios', 'Actividad']
+  const TODAS = [
+    'Inicio', 'Propiedades', 'Contratos', 'Clientes', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros', 'Usuarios', 'Actividad',
+    'Configuración',
+  ]
 
   async function menuDe(rol: string) {
     servirComo(rol)
@@ -88,9 +92,9 @@ describe('El menú sigue la matriz de roles', () => {
     expect(await menuDe('admin')).toEqual(TODAS)
   })
 
-  it('el operador ve el día a día —propiedades, contratos, cobranza y propietarios— y no la administración de la instancia', async () => {
+  it('el operador ve el día a día —propiedades, contratos, clientes, cobranza y propietarios— y no la administración de la instancia (ni Configuración)', async () => {
     expect(await menuDe('operador')).toEqual([
-      'Inicio', 'Propiedades', 'Contratos', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros',
+      'Inicio', 'Propiedades', 'Contratos', 'Clientes', 'Cuotas', 'Cobros', 'Gastos', 'Liquidaciones', 'Fondos de terceros',
     ])
   })
 
@@ -106,6 +110,27 @@ describe('El menú sigue la matriz de roles', () => {
     servirComo('admin')
     montar('/inicio')
     await waitFor(() => expect(enMenu('Inicio')).toHaveAttribute('data-active', 'true'))
+  })
+})
+
+describe('Clientes y Configuración cuelgan del menú', () => {
+  it.each([
+    ['operador', '/clientes', 'Clientes', 'Clientes'],
+    ['admin', '/clientes', 'Clientes', 'Clientes'],
+    ['admin', '/configuracion', 'Configuración', 'Configuración'],
+  ])('%s: %s abre «%s» y deja marcada la entrada «%s» del menú', async (rol, ruta, titulo, entrada) => {
+    servirComo(rol)
+    montar(ruta)
+    expect(await screen.findByRole('heading', { name: titulo })).toBeInTheDocument()
+    await waitFor(() => expect(enMenu(entrada)).toHaveAttribute('data-active', 'true'))
+  })
+
+  it('la ficha de un cliente deja marcada la entrada «Clientes» del menú', async () => {
+    const api = servirComo('operador')
+    api.responder('GET /api/clientes/3', json({ id: 3, name: 'Carla Ficticia', cuit_dni: '27000000033', iva_condition: '', phone: '', email: '', address: '', activo: 1, auto_facturar: 0, alias_facturacion: [], facturas: [], presupuestos: [], remitos: [] }))
+    montar('/clientes/3')
+    expect(await screen.findByRole('heading', { name: 'Carla Ficticia' })).toBeInTheDocument()
+    expect(enMenu('Clientes')).toHaveAttribute('data-active', 'true')
   })
 })
 

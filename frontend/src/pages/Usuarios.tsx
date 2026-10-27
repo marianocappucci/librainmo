@@ -30,7 +30,8 @@ export function Usuarios() {
       />
       <p className="text-sm text-muted-foreground">
         Los usuarios de esta instancia, que son el personal de la inmobiliaria. El administrador ve todo, incluidos
-        los usuarios, la actividad y la copia de seguridad; el operador, el día a día.
+        los usuarios, la actividad, la configuración de la empresa y la copia de seguridad (Configuración → Datos / Backup); el operador, el
+        día a día.
       </p>
     </div>
   )

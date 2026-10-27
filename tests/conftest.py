@@ -24,6 +24,8 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from libraauth import session_auth as _session_auth
+from libraauth.captcha import Captcha
 from libracore.testing.pg_por_worker import base_por_worker
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -112,6 +114,48 @@ def _terminos_ya_aceptados(request):
     # le prendería el gate a la mitad.
     mp = pytest.MonkeyPatch()
     mp.setattr(TerminosRepository, "esta_aceptada", lambda self: True)
+    yield
+    mp.undo()
+
+
+# ── Captcha ALTCHA: aprobado para el resto de la suite ───────────────────────
+#
+# Con `captcha=True` en `app/routers/auth.py` el login y forgot-password exigen la solución de un desafío, y la suite
+# postea al login en muchos lugares. El captcha no es lo que miden: lo prueba libraauth. Acá sólo se cablea, y eso lo
+# mide `test_captcha_login.py` con la función real puesta.
+
+#: La función real de libraauth, para que un test pueda volver a ponerla.
+CAPTCHA_DE_ORIGINAL = _session_auth._captcha_de
+
+
+class _CaptchaQueAprueba:
+    """Doble del `Captcha` de libraauth: aprueba cualquier payload. `emitir()` delega en un `Captcha` real y barato,
+    así `GET /auth/captcha` sigue devolviendo un desafío con la forma de siempre."""
+
+    def __init__(self):
+        self._real = Captcha("clave-de-prueba", costo=1, contador_min=1, contador_rango=5)
+
+    def emitir(self) -> dict:
+        return self._real.emitir()
+
+    def verificar(self, payload: str) -> bool:
+        return True
+
+
+_CAPTCHA_DE_PRUEBA = _CaptchaQueAprueba()
+
+
+@pytest.fixture(autouse=True)
+def _captcha_aprobado():
+    """Todo login y forgot-password de la suite pasa el captcha.
+
+    Se parchea la función de módulo `_captcha_de` y no `app.state.captcha`: el router la resuelve por nombre en cada
+    request, y la app se arma en muchos lugares. `MonkeyPatch()` propio y no el fixture, por lo mismo que
+    `_terminos_ya_aceptados`: un `monkeypatch.undo()` en el cuerpo de un test desharía también este parche.
+    """
+    mp = pytest.MonkeyPatch()
+    # `usados` con default: desde libraauth v0.5x la función recibe también `captcha_usados` (ADR-023).
+    mp.setattr(_session_auth, "_captcha_de", lambda request, usados=None: _CAPTCHA_DE_PRUEBA)
     yield
     mp.undo()
 

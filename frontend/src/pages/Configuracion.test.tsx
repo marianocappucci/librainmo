@@ -7,9 +7,10 @@ import { Configuracion } from './Configuracion'
 import { error, json, servidor } from '@/test/servidor'
 
 /**
- * La pantalla es la de la familia (`libra-ui/Configuracion`); lo propio de LibraInmo es QUÉ declara: sólo Empresa y Datos / Backup, que son
- * los routers que el backend monta (`build_empresa_router`, `build_empresa_admin_router`, `build_backup_router`). Nada de MercadoPago, ARCA
- * ni correo: una pestaña sin endpoints daría 404 en cada carga. Vale además como canario del kit.
+ * La pantalla es la de la familia (`libra-ui/Configuracion`); lo propio de LibraInmo es QUÉ declara: Empresa, el correo (Integraciones) y
+ * Datos / Backup, que son los routers que el backend monta (`build_empresa_router`, `build_empresa_admin_router`, `build_smtp_settings_router`,
+ * `build_smtp_probe_router`, `build_backup_router`). Nada de MercadoPago ni ARCA: una pestaña sin endpoints daría 404 en cada carga. Vale
+ * además como canario del kit.
  */
 
 const EMPRESA = {
@@ -29,7 +30,7 @@ function montar(ruta = '/configuracion') {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Configuración', () => {
-  it('ofrece Empresa y Datos / Backup, y ninguna integración que el backend no monta', async () => {
+  it('ofrece Empresa, Integraciones (sólo el correo) y Datos / Backup, y ninguna integración que el backend no monta', async () => {
     const api = servidor({
       'GET /api/config/empresa': json(EMPRESA),
       'GET /api/config/empresa/logo': error(404, 'No hay logo cargado.'),
@@ -39,14 +40,36 @@ describe('Configuración', () => {
     expect(await screen.findByRole('heading', { name: 'Configuración' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Empresa' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Datos / Backup' })).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'Integraciones' })).not.toBeInTheDocument()
-    expect(screen.queryByText(/MercadoPago|ARCA|SMTP/)).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Integraciones' })).toBeInTheDocument()
+    expect(screen.queryByText(/MercadoPago|ARCA/)).not.toBeInTheDocument()
 
     // Empresa es la primera pestaña: carga los datos de `GET /api/config/empresa`.
     expect(await screen.findByDisplayValue('Inmobiliaria Ficticia')).toBeInTheDocument()
     expect(api.de('GET', '/api/config/empresa')).toHaveLength(1)
     // Nada de rutas de integraciones inexistentes.
     expect(api.pedidos.filter((p) => !p.ruta.startsWith('/api/config/empresa'))).toEqual([])
+  })
+
+  it('Integraciones muestra sólo el correo: lee `GET /admin/smtp` y «Probar conexión» llama a `POST /admin/smtp/probar`', async () => {
+    const user = userEvent.setup()
+    const api = servidor({
+      'GET /admin/smtp': json({
+        origen: 'base', host: 'smtp.ficticio.test', port: 587, user: 'correo@ficticio.test', from_email: 'correo@ficticio.test',
+        from_name: 'Inmobiliaria Ficticia', password_definida: true, password_indescifrable: false, configurado: true,
+      }),
+      'POST /admin/smtp/probar': json({ ok: true, host: 'smtp.ficticio.test', port: 587, user: 'correo@ficticio.test' }),
+    })
+    montar('/configuracion?seccion=integraciones')
+
+    expect(await screen.findByDisplayValue('smtp.ficticio.test')).toBeInTheDocument()
+    // Con una sola integración no hay sub-navegación lateral: el correo va directo.
+    expect(screen.queryByRole('button', { name: /MercadoPago|ARCA/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Probar conexión/ }))
+    expect(await screen.findByText('Conectado a smtp.ficticio.test:587 como correo@ficticio.test.')).toBeInTheDocument()
+    expect(api.de('POST', '/admin/smtp/probar')).toHaveLength(1)
+    // Nada de rutas de integraciones inexistentes.
+    expect(api.pedidos.filter((p) => !p.ruta.startsWith('/admin/smtp'))).toEqual([])
   })
 
   it('guardar los datos de la empresa llama a `PUT /api/config/empresa` con los campos corregidos', async () => {

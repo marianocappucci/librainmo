@@ -21,7 +21,8 @@ dependencies = [
     # la MISMA base que el dominio (ADR-002). `python -m app.migrar` corre su
     # cadena (`libracore.migrar.upgrade`) antes de la del dominio.
     # v1.197.1 -> v1.197.2 (2026-10-26): el lector de migraciones falla cerrado ante configure(**...). Sin migracion.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.197.2",
+    # v1.197.2 -> v1.197.3 (2026-10-27): HTTPS forzado y HTTP/2 tras el alta con certificado (NPM 2.16). Sin migracion.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.197.3",
 ]
 
 [project.optional-dependencies]

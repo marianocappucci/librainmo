@@ -197,3 +197,24 @@ def test_no_se_da_de_baja_a_quien_es_parte_de_algo_vivo(admin):
     r = admin.post(f"/api/clientes/{duena}/desactivar")
     assert r.status_code == 422 and "es titular de la propiedad" in r.json()["detail"]
     assert admin.post(f"/api/clientes/{suelto}/desactivar").json()["activo"] == 0
+
+
+def test_sin_fecha_se_propone_el_ajuste_que_cae_en_el_mes(admin, monkeypatch):
+    """La cuota de febrero espera al ajuste del 15-02 desde el día 1: la ficha tiene que poder aplicarlo ese día."""
+    from datetime import date
+
+    from app import tiempo
+
+    duena = _cliente(admin, "Dueña Ficticia")
+    k = _contrato(admin, duena, direccion="Calle Inventada 100", importe="100000", inicio="2026-11-15",
+                  fin="2028-11-14", metodo_ajuste="porcentaje", porcentaje_ajuste="10",
+                  periodicidad_ajuste="trimestral")
+    monkeypatch.setattr(tiempo, "hoy", lambda: date(2027, 2, 5))
+    p = admin.get(f"/api/contratos/{k['id']}/ajuste").json()
+    assert (p["corresponde"], p["fecha_ajuste"], p["ajuste"]["importe_nuevo"]) == (True, "2027-02-15", "110000.00")
+    assert admin.post(f"/api/contratos/{k['id']}/ajuste", json={"fecha_ajuste": "2027-02-15"}).status_code == 201
+    assert _cuota_de(admin, "2027-02-05", k["id"])["total"] == "105000.00"
+
+    # Un mes sin ajuste sigue diciendo que no corresponde.
+    monkeypatch.setattr(tiempo, "hoy", lambda: date(2027, 3, 5))
+    assert admin.get(f"/api/contratos/{k['id']}/ajuste").json()["corresponde"] is False

@@ -44,6 +44,9 @@ const Cascaron = createLayout<Usuario>({
         // `activoEn`: la ficha de una propiedad o de un contrato (`/propiedades/3`, `/contratos/5/editar`) deja marcada la entrada de su listado.
         { to: '/propiedades', label: 'Propiedades', icon: Building2, activoEn: ['/propiedades'] },
         { to: '/contratos', label: 'Contratos', icon: FilePenLine, activoEn: ['/contratos'] },
+        // Inquilinos, propietarios y garantes: los clientes del motor. Visible para los dos roles (el router los deja pasar a ambos). Lleva
+        // el ícono del catálogo porque la pantalla es la del kit y dibuja su título con `ICONOS.clientes`.
+        { to: '/clientes', label: 'Clientes', icon: ICONOS.clientes, activoEn: ['/clientes'] },
       ],
     },
     // El mes de la inmobiliaria: lo que se cobra al inquilino (cuotas y cobros) y lo que se rinde al propietario (gastos, liquidaciones y
@@ -70,6 +73,9 @@ const Cascaron = createLayout<Usuario>({
         { to: '/usuarios', label: 'Usuarios', icon: ICONOS.usuarios, adminOnly: true },
         // Junto a Usuarios: se mira para responder «quién hizo esto», que es una pregunta sobre la gente y no sobre los ajustes.
         { to: '/logs', label: 'Actividad', icon: ICONOS.logDeActividad, adminOnly: true },
+        // Los datos de la empresa los lee cualquier rol, pero se escriben con admin, y el backup es sólo de admin: la entrada es del admin.
+        // El ícono es el de la pantalla (`createConfiguracion` recibe el mismo `ICONOS.configuracion`).
+        { to: '/configuracion', label: 'Configuración', icon: ICONOS.configuracion, adminOnly: true },
       ],
     },
   ],

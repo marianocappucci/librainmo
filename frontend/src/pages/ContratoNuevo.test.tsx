@@ -49,6 +49,20 @@ const enviar = (user: Usuario) => user.click(screen.getByRole('button', { name: 
 
 afterEach(() => vi.unstubAllGlobals())
 
+describe('Contrato nuevo — la moneda', () => {
+  it('🔴 el alquiler inicial y el depósito dicen en qué moneda se escriben, y cambian con la moneda elegida', async () => {
+    const user = userEvent.setup()
+    base()
+    montar()
+    await screen.findByRole('combobox', { name: 'Propiedad' })
+
+    expect(screen.getAllByText('En pesos ($).')).toHaveLength(2)
+    await elegirCerrado(user, 'Moneda', 'Dólares (USD)')
+    expect(screen.getAllByText('En dólares (US$).')).toHaveLength(2)
+    expect(screen.queryByText('En pesos ($).')).not.toBeInTheDocument()
+  })
+})
+
 describe('Contrato nuevo — los campos según el método de ajuste', () => {
   it('«sin ajuste» (el de arranque) no pide índice, porcentaje ni cada cuánto se ajusta', async () => {
     base()

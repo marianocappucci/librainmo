@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Cobros } from './Cobros'
-import { COBRO, COBRO_ANULADO, CONTRATO } from '@/test/datos'
+import { COBRO, COBRO_ANULADO, COBRO_EN_DOLARES, CONTRATO } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -25,6 +25,19 @@ function base(lista: unknown = [COBRO]) {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Cobros — la moneda', () => {
+  it('🔴 un cobro de una cuota en dólares se ve con «US$», también el punitorio que incluye', async () => {
+    base([COBRO, COBRO_EN_DOLARES])
+    montar()
+
+    const enDolares = (await screen.findByText(/US\$ 471\.750,51/)).closest('tr') as HTMLElement
+    expect(enDolares).toHaveTextContent('incluye US$ 9.250,01 de punitorio')
+    const enPesos = (await screen.findByText(/^\$ 471\.750,51/)).closest('tr') as HTMLElement
+    expect(enPesos).toHaveTextContent('incluye $ 9.250,01 de punitorio')
+    expect(enPesos).not.toHaveTextContent('US$')
+  })
+})
 
 describe('Cobros — el listado', () => {
   it('lista fecha, contrato, inquilino, cuota, total con su punitorio, recibo y estado', async () => {

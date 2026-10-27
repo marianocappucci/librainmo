@@ -101,6 +101,11 @@ export const MONEDAS = [
   { value: 'USD', label: 'Dólares (USD)' },
 ] as const satisfies readonly Opcion[]
 
+/** La moneda en una frase: «en pesos», «en dólares» (`ARS` → `pesos`, `USD` → `dólares`). Lo desconocido se devuelve como vino. */
+export function nombreDeMoneda(moneda: string): string {
+  return moneda === 'ARS' ? 'pesos' : moneda === 'USD' ? 'dólares' : moneda
+}
+
 export const METODO_FIJO = 'fijo'
 export const METODO_PORCENTAJE = 'porcentaje'
 export const METODO_INDICE = 'indice'

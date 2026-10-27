@@ -29,9 +29,9 @@ import { contratos, mensajeDeError, propiedades } from '@/lib/api'
 import type { ContratoDetalle, ContratoEntrada, Propiedad } from '@/lib/api'
 import {
   BASES_DE_PUNITORIO, DESTINOS_DE_PUNITORIO, ESTADOS_DE_PROPIEDAD, ESTADOS_SIN_CONTRATO, METODOS_DE_AJUSTE,
-  METODO_FIJO, METODO_INDICE, METODO_PORCENTAJE, MONEDAS, PERIODICIDADES, direccionCompleta, etiquetaDe,
+  METODO_FIJO, METODO_INDICE, METODO_PORCENTAJE, MONEDAS, PERIODICIDADES, direccionCompleta, etiquetaDe, nombreDeMoneda,
 } from '@/lib/dominio'
-import { aCentesimas, aDecimal, numeroArgentino } from '@/lib/importes'
+import { aCentesimas, aDecimal, numeroArgentino, simboloDeMoneda } from '@/lib/importes'
 
 // Las columnas del backend: `Numeric(14, 2)` admite 12 enteros; `Numeric(7, 3)`, 4; `Numeric(7, 4)`, 3.
 const IMPORTE = { escala: 2, enteros: 12 }
@@ -198,6 +198,8 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
     defaultValues: contrato ? desdeContrato(contrato) : { ...VACIO, propiedad_id: propiedadInicial ?? '' },
   })
   const metodo = form.watch('metodo_ajuste')
+  const moneda = form.watch('moneda')
+  const enLaMoneda = `En ${nombreDeMoneda(moneda)} (${simboloDeMoneda(moneda)}).`
 
   useEffect(() => {
     propiedades.listar().then(setLista).catch((e: unknown) => setError(mensajeDeError(e)))
@@ -284,6 +286,7 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
               control={form.control}
               name="importe_inicial"
               etiqueta="Alquiler inicial"
+              ayuda={enLaMoneda}
               inputMode="decimal"
               placeholder="450.000,00"
               autoComplete="off"
@@ -295,6 +298,7 @@ export function FormularioDeContrato({ contrato, propiedadInicial, onCancelar }:
               control={form.control}
               name="deposito"
               etiqueta="Depósito"
+              ayuda={enLaMoneda}
               inputMode="decimal"
               placeholder="Opcional"
               autoComplete="off"

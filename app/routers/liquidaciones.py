@@ -51,20 +51,24 @@ def anular_gasto(gasto_id: int, datos: MotivoEntrada, sesion: Session = Depends(
 
 
 @router.get("/previsualizar")
-def previsualizar(propietario_id: int, hasta: date | None = None, sesion: Session = Depends(obtener_sesion)):
-    """Lo que entraría en la liquidación del propietario hasta `hasta` (hoy, si no se dice). No escribe."""
-    return servicio.previsualizar(sesion, propietario_id, hasta=hasta or tiempo.hoy())
+def previsualizar(propietario_id: int, hasta: date | None = None, moneda: str = "ARS",
+                  sesion: Session = Depends(obtener_sesion)):
+    """Lo que entraría en la liquidación del propietario en `moneda`, hasta `hasta` (hoy, si no se dice). No
+    escribe."""
+    return servicio.previsualizar(sesion, propietario_id, hasta=hasta or tiempo.hoy(), moneda=moneda)
 
 
 @router.get("")
-def buscar(propietario_id: int | None = None, estado: str | None = None, limit: int = Query(100, ge=1, le=500),
-           offset: int = Query(0, ge=0), sesion: Session = Depends(obtener_sesion)):
-    return servicio.buscar(sesion, propietario_id=propietario_id, estado=estado, limit=limit, offset=offset)
+def buscar(propietario_id: int | None = None, estado: str | None = None, moneda: str | None = None,
+           limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+           sesion: Session = Depends(obtener_sesion)):
+    return servicio.buscar(sesion, propietario_id=propietario_id, estado=estado, moneda=moneda, limit=limit,
+                           offset=offset)
 
 
 @router.post("", status_code=201)
 def emitir(datos: LiquidacionEntrada, sesion: Session = Depends(obtener_sesion), usuario=Depends(get_current_user)):
-    return servicio.emitir(sesion, datos.propietario_id, fecha=datos.fecha, hasta=datos.hasta,
+    return servicio.emitir(sesion, datos.propietario_id, fecha=datos.fecha, hasta=datos.hasta, moneda=datos.moneda,
                            observaciones=datos.observaciones, usuario=_usuario(usuario))
 
 

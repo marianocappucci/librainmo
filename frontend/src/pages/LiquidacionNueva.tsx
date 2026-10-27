@@ -9,7 +9,11 @@
  * 🔴 No se emite con neto negativo (los gastos y la comisión superan lo cobrado): la deuda del propietario con la inmobiliaria y cómo se
  * arrastra a la liquidación siguiente es una regla del piloto que falta (ADR-007, punto 5). La pantalla lo dice y no ofrece emitir.
  *
- * El propietario es `SelectCliente` con alta en el lugar (ADR-071); desde el reporte de fondos de terceros llega con `?propietario=`.
+ * 🔑 **Una liquidación es de una moneda** (ADR-088 del motor): se elige (pesos por omisión) y entran sólo los movimientos en ella. Un
+ * propietario con contratos en pesos y en dólares recibe dos liquidaciones: si la previsualización dice que tiene pendientes en la otra
+ * moneda (`monedas_con_pendientes`), la pantalla lo avisa y ofrece pasar a ella.
+ *
+ * El propietario es `SelectCliente` con alta en el lugar (ADR-071); desde el reporte de fondos de terceros llega con `?propietario=` y `?moneda=`.
  */
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -19,6 +23,7 @@ import { CAMPOS_CLIENTE_DEL_MOTOR } from 'libra-ui/comercio/alta-de-cliente'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { SelectCerrado } from '@/components/SelectCerrado'
 import { ItemsDeLiquidacion, TotalesDeLiquidacionVista } from '@/components/ItemsDeLiquidacion'
 import { AvisoDeError } from '@/components/listado'
 import { Button } from '@/components/ui/button'
@@ -29,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useClientes } from '@/hooks/use-clientes'
 import { liquidaciones, mensajeDeError } from '@/lib/api'
 import type { PrevisualizacionDeLiquidacion } from '@/lib/api'
+import { MONEDAS, nombreDeMoneda } from '@/lib/dominio'
 import { fecha as verFecha, hoyISO } from '@/lib/fechas'
 import { esNegativo, pesos } from '@/lib/importes'
 
@@ -41,6 +47,7 @@ export function LiquidacionNueva() {
   const [propietario, setPropietario] = useState(params.get('propietario') ?? '')
   const [fecha, setFecha] = useState(hoyISO())
   const [hasta, setHasta] = useState(hoyISO())
+  const [moneda, setMoneda] = useState(MONEDAS.some((m) => m.value === params.get('moneda')) ? (params.get('moneda') as string) : 'ARS')
   const [observaciones, setObservaciones] = useState('')
   const [vista, setVista] = useState<PrevisualizacionDeLiquidacion | null>(null)
   const [cargando, setCargando] = useState(false)
@@ -57,12 +64,12 @@ export function LiquidacionNueva() {
   const hastaPosterior = ISO.test(fecha) && ISO.test(hasta) && hasta > fecha
   const datosValidos = propietario !== '' && ISO.test(fecha) && ISO.test(hasta) && !hastaPosterior
 
-  async function previsualizar() {
+  async function previsualizar(enMoneda = moneda) {
     if (!datosValidos) return
     setCargando(true)
     setError(null)
     try {
-      setVista(await liquidaciones.previsualizar(Number(propietario), hasta))
+      setVista(await liquidaciones.previsualizar(Number(propietario), hasta, enMoneda))
     } catch (e) {
       setVista(null)
       setError(mensajeDeError(e))
@@ -80,6 +87,7 @@ export function LiquidacionNueva() {
         propietario_id: Number(propietario),
         fecha,
         hasta,
+        moneda: vista.moneda,
         observaciones: observaciones.trim() || null,
       })
       navigate(`/liquidaciones/${l.id}`)
@@ -89,6 +97,8 @@ export function LiquidacionNueva() {
     }
   }
 
+  // La otra moneda en la que este propietario también tiene movimientos sin liquidar (si la hay).
+  const otraMoneda = vista?.monedas_con_pendientes.find((m) => m !== vista.moneda) ?? null
   const sinMovimientos = vista !== null && vista.items.length === 0
   const netoNegativo = vista !== null && esNegativo(vista.neto)
   const puedeEmitir = vista !== null && !sinMovimientos && !netoNegativo && !emitiendo
@@ -146,6 +156,18 @@ export function LiquidacionNueva() {
               />
             </div>
             <div className="grid gap-1.5">
+              <Label htmlFor="moneda-de-la-liquidacion">Moneda</Label>
+              <SelectCerrado
+                id="moneda-de-la-liquidacion"
+                value={moneda}
+                onChange={(v) => {
+                  setMoneda(v)
+                  descartar()
+                }}
+                opciones={MONEDAS}
+              />
+            </div>
+            <div className="grid gap-1.5">
               <Label htmlFor="liquidar-hasta">Liquidar hasta</Label>
               <Input
                 id="liquidar-hasta"
@@ -179,21 +201,37 @@ export function LiquidacionNueva() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              {vista.propietario_nombre} — hasta el {verFecha(vista.hasta)}
+              {vista.propietario_nombre} — hasta el {verFecha(vista.hasta)}, en {nombreDeMoneda(vista.moneda)}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {otraMoneda && (
+              <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <span>Este propietario también tiene movimientos sin liquidar en {nombreDeMoneda(otraMoneda)}.</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={cargando}
+                  onClick={() => {
+                    setMoneda(otraMoneda)
+                    void previsualizar(otraMoneda)
+                  }}
+                >
+                  Liquidar en {nombreDeMoneda(otraMoneda)}
+                </Button>
+              </div>
+            )}
             {sinMovimientos ? (
-              <p className="text-sm text-muted-foreground">No hay movimientos sin liquidar para este propietario hasta esa fecha.</p>
+              <p className="text-sm text-muted-foreground">No hay movimientos sin liquidar en {nombreDeMoneda(vista.moneda)} para este propietario hasta esa fecha.</p>
             ) : (
               <>
-                <TotalesDeLiquidacionVista totales={vista} />
-                <ItemsDeLiquidacion items={vista.items} />
+                <TotalesDeLiquidacionVista totales={vista} moneda={vista.moneda} />
+                <ItemsDeLiquidacion items={vista.items} moneda={vista.moneda} />
               </>
             )}
             {netoNegativo && (
               <p role="alert" className="text-sm text-destructive">
-                Los gastos y la comisión superan lo cobrado ({pesos(vista.neto)}): no se emite una liquidación con neto negativo. La deuda
+                Los gastos y la comisión superan lo cobrado ({pesos(vista.neto, vista.moneda)}): no se emite una liquidación con neto negativo. La deuda
                 del propietario con la inmobiliaria todavía no tiene una regla para llevarla a la liquidación siguiente.
               </p>
             )}
@@ -223,7 +261,7 @@ export function LiquidacionNueva() {
         title="¿Emitir la liquidación?"
         description={
           vista
-            ? `Neto a pagar a ${vista.propietario_nombre}: ${pesos(vista.neto)}. Los movimientos quedan liquidados y se carga la comisión (${pesos(vista.comision)}) en su cuenta. Si te equivocás, una liquidación emitida y sin pagar se puede anular.`
+            ? `Neto a pagar a ${vista.propietario_nombre}: ${pesos(vista.neto, vista.moneda)}. Los movimientos quedan liquidados y se carga la comisión (${pesos(vista.comision, vista.moneda)}) en su cuenta. Si te equivocás, una liquidación emitida y sin pagar se puede anular.`
             : undefined
         }
         confirmLabel="Emitir liquidación"

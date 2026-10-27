@@ -81,6 +81,8 @@ export function CobrarCuota() {
     }
   }, [id, fecha])
 
+  // La moneda del contrato (la propuesta de cobro no la trae): mientras la cuota carga, pesos.
+  const moneda = cuota?.moneda ?? 'ARS'
   const conPunitorio = propuesta !== null && aCentesimas(propuesta.punitorio) !== 0
   // El total a cobrar: lo que dice el servidor, sin el punitorio si se condona.
   const total = propuesta ? (condonar ? propuesta.importe_cuota : propuesta.total) : null
@@ -107,9 +109,9 @@ export function CobrarCuota() {
     if (diferencia === null) return 'Escribí el monto de cada medio, con hasta dos decimales.'
     if (diferencia === 0) return 'Los medios cierran con el total.'
     return diferencia > 0
-      ? `Falta cobrar ${pesos(deCentesimas(diferencia))}.`
-      : `Los medios se pasan del total por ${pesos(deCentesimas(-diferencia))}.`
-  }, [diferencia])
+      ? `Falta cobrar ${pesos(deCentesimas(diferencia), moneda)}.`
+      : `Los medios se pasan del total por ${pesos(deCentesimas(-diferencia), moneda)}.`
+  }, [diferencia, moneda])
 
   function cambiar(clave: number, parcial: Partial<Fila>) {
     setFilas((previas) => previas.map((f) => (f.clave === clave ? { ...f, ...parcial } : f)))
@@ -153,7 +155,7 @@ export function CobrarCuota() {
         <TituloPantalla icono={CalendarClock}>Cobro registrado</TituloPantalla>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Cobro de {pesos(cobro.total)} el {verFecha(cobro.fecha)}</CardTitle>
+            <CardTitle className="text-base">Cobro de {pesos(cobro.total, cobro.moneda)} el {verFecha(cobro.fecha)}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {cobro.recibo && (
@@ -163,7 +165,7 @@ export function CobrarCuota() {
               </p>
             )}
             {aCentesimas(cobro.punitorio_condonado) !== 0 && (
-              <p className="text-muted-foreground">Se condonó un punitorio de {pesos(cobro.punitorio_condonado)}.</p>
+              <p className="text-muted-foreground">Se condonó un punitorio de {pesos(cobro.punitorio_condonado, cobro.moneda)}.</p>
             )}
             <div className="flex flex-wrap gap-2">
               <Button asChild>
@@ -221,12 +223,12 @@ export function CobrarCuota() {
                 <dl className="grid gap-3 sm:grid-cols-4">
                   <div>
                     <dt className="text-xs text-muted-foreground">Cuota</dt>
-                    <dd className="text-sm">{pesos(propuesta.importe_cuota)}</dd>
+                    <dd className="text-sm">{pesos(propuesta.importe_cuota, moneda)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Punitorio</dt>
                     <dd className="text-sm">
-                      {condonar ? <span className="line-through">{pesos(propuesta.punitorio)}</span> : pesos(propuesta.punitorio)}
+                      {condonar ? <span className="line-through">{pesos(propuesta.punitorio, moneda)}</span> : pesos(propuesta.punitorio, moneda)}
                       {propuesta.dias_de_atraso > 0 && (
                         <span className="text-muted-foreground">
                           {' '}· {propuesta.dias_de_atraso} {propuesta.dias_de_atraso === 1 ? 'día' : 'días'} de atraso
@@ -240,7 +242,7 @@ export function CobrarCuota() {
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Total a cobrar</dt>
-                    <dd className="text-base font-semibold">{pesos(total)}</dd>
+                    <dd className="text-base font-semibold">{pesos(total, moneda)}</dd>
                   </div>
                 </dl>
               )}
@@ -330,8 +332,8 @@ export function CobrarCuota() {
                 </Button>
                 <p className="text-sm" aria-live="polite">
                   <span className="text-muted-foreground">Suma de los medios </span>
-                  <span className="font-medium">{sumaEnCentavos === null ? '—' : pesos(deCentesimas(sumaEnCentavos))}</span>
-                  <span className="text-muted-foreground"> de {total === null ? '—' : pesos(total)}</span>
+                  <span className="font-medium">{sumaEnCentavos === null ? '—' : pesos(deCentesimas(sumaEnCentavos), moneda)}</span>
+                  <span className="text-muted-foreground"> de {total === null ? '—' : pesos(total, moneda)}</span>
                 </p>
               </div>
               <p className="text-sm text-muted-foreground">{resumenDeLaDiferencia}</p>

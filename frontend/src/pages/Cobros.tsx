@@ -110,9 +110,9 @@ export function Cobros() {
         size: 210,
         cell: ({ row }) => (
           <div>
-            {pesos(row.original.total)}
+            {pesos(row.original.total, row.original.moneda)}
             {aCentesimas(row.original.punitorio) !== 0 && (
-              <div className="text-xs text-muted-foreground">incluye {pesos(row.original.punitorio)} de punitorio</div>
+              <div className="text-xs text-muted-foreground">incluye {pesos(row.original.punitorio, row.original.moneda)} de punitorio</div>
             )}
           </div>
         ),

@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { liquidaciones, mensajeDeError, urlDelPdfDeLiquidacion } from '@/lib/api'
 import type { Liquidacion } from '@/lib/api'
-import { MEDIOS_DE_PAGO_AL_PROPIETARIO, etiquetaDe } from '@/lib/dominio'
+import { MEDIOS_DE_PAGO_AL_PROPIETARIO, MONEDAS, etiquetaDe } from '@/lib/dominio'
 import { fecha as verFecha, hoyISO } from '@/lib/fechas'
 import { pesos } from '@/lib/importes'
 
@@ -66,7 +66,7 @@ function DialogoDePago({ abierto, liquidacion, onCerrar, onCambio }: {
       abierto={abierto}
       onCerrar={onCerrar}
       titulo={`Registrar el pago de ${liquidacion.numero}`}
-      descripcion={`Se le paga a ${liquidacion.propietario_nombre} el neto de ${pesos(liquidacion.neto)}. La fecha no puede ser anterior a la de la liquidación (${verFecha(liquidacion.fecha)}).`}
+      descripcion={`Se le paga a ${liquidacion.propietario_nombre} el neto de ${pesos(liquidacion.neto, liquidacion.moneda)}. La fecha no puede ser anterior a la de la liquidación (${verFecha(liquidacion.fecha)}).`}
       form={form}
       onEnviar={enviar}
       error={error}
@@ -167,6 +167,7 @@ export function LiquidacionDetalle() {
           <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Dato etiqueta="Propietario">{liq.propietario_nombre}</Dato>
             <Dato etiqueta="Fecha">{verFecha(liq.fecha)}</Dato>
+            <Dato etiqueta="Moneda">{etiquetaDe(MONEDAS, liq.moneda)}</Dato>
             <Dato etiqueta="Liquidado hasta">{verFecha(liq.hasta)}</Dato>
             <Dato etiqueta="Emitida por">{liq.usuario}</Dato>
             {liq.estado === 'pagada' && (
@@ -180,7 +181,7 @@ export function LiquidacionDetalle() {
               <span className="whitespace-pre-line">{liq.observaciones}</span>
             </Dato>
           </dl>
-          <TotalesDeLiquidacionVista totales={liq} />
+          <TotalesDeLiquidacionVista totales={liq} moneda={liq.moneda} />
         </CardContent>
       </Card>
 
@@ -194,7 +195,7 @@ export function LiquidacionDetalle() {
               {liq.estado === 'anulada' ? 'Al anularla, sus movimientos quedaron libres para otra liquidación.' : 'Sin movimientos.'}
             </p>
           ) : (
-            <ItemsDeLiquidacion items={liq.items} />
+            <ItemsDeLiquidacion items={liq.items} moneda={liq.moneda} />
           )}
         </CardContent>
       </Card>

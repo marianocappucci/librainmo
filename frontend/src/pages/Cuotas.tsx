@@ -113,7 +113,7 @@ export function Cuotas() {
         accessorFn: (c) => c.total.padStart(20, '0'),
         header: sortableHeader('Total'),
         size: 150,
-        cell: ({ row }) => pesos(row.original.total),
+        cell: ({ row }) => pesos(row.original.total, row.original.moneda),
       },
       {
         accessorKey: 'estado',

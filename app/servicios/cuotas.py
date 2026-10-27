@@ -10,16 +10,21 @@
    contrato nuevo nacería en mora. Acá vence `max(vencimiento pactado, emisión)`.
 3. **Con confirmación humana**: `previsualizar` muestra lo que se generaría sin escribir nada; `generar` lo escribe.
 4. **Un contrato con un ajuste pendiente no genera su cuota** (`servicios/ajustes.py`): primero se aplica el ajuste.
+   Se mira todo el mes: **un ajuste que cae a mitad de mes prorratea por días** entre el precio viejo y el nuevo
+   (decisión del 2026-10-27), con una línea de alquiler por tramo.
 5. **Los conceptos que paga el inquilino van en la cuota**: los fijos con su importe, los variables (expensas) con el
    que se cargue al generar o después, con `agregar_linea`, mientras la cuota esté pendiente. Los conceptos no se
    prorratean.
-6. **Cada cuota es un cargo (debe) en la cuenta del inquilino**, en el libro del motor y en la misma transacción.
-   Agregarle una línea corrige ese asiento; anularla lo contraasienta.
+6. **Cada cuota es un cargo (debe) en la cuenta del inquilino**, en el libro del motor y en la misma transacción, en la
+   moneda del contrato (ADR-088 del motor). Agregarle una línea corrige ese asiento; anularla lo contraasienta.
+7. **Los conceptos que paga el propietario con importe fijo son un gasto por su cuenta** (decisión del 2026-10-27): al
+   generar la cuota se carga el gasto, repartido entre los titulares, y se le descuenta en la liquidación. Los que no
+   tienen importe se listan para cargarlos como gasto cuando llegue el monto. Anular la cuota anula esos gastos.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from libracore.periodos import periodo_de, proponer_cuota, vencimiento_de
@@ -31,14 +36,19 @@ from app.errores import Conflicto, Invalido, NoEncontrado
 from app.models.cobros import Cobro
 from app.models.contratos import Contrato
 from app.models.cuotas import Cuota, CuotaLinea
+from app.models.liquidaciones import Gasto
+from app.models.propiedades import Propiedad
 from app.servicios import ajustes, clientes, cuentas
-from app.servicios import contratos as servicio_contratos
 from app.servicios.montos import texto
 
 _MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
           "noviembre", "diciembre")
 _ETIQUETAS_CONCEPTO = {"expensas": "Expensas", "abl": "ABL", "seguro": "Seguro", "servicio": "Servicios",
                        "otro": "Otro"}
+#: La categoría del gasto que genera un concepto que paga el propietario. Las expensas a cargo del dueño son las
+#: extraordinarias (las ordinarias las paga el inquilino).
+_CATEGORIA_DEL_GASTO = {"expensas": "expensas_extraordinarias", "abl": "impuesto", "seguro": "otro",
+                        "servicio": "servicio", "otro": "otro"}
 
 
 def nombre_del_mes(d: date) -> str:
@@ -53,32 +63,76 @@ def _concepto_de_linea(x) -> str:
     return x.descripcion.strip() or _ETIQUETAS_CONCEPTO[x.concepto]
 
 
+def _tramos(c: Contrato, mes, ancla: date) -> list[dict] | None:
+    """El alquiler del mes por tramo de precio (decisión del 2026-10-27): un ajuste que cae a mitad de mes parte el mes
+    en los días a precio viejo y los días a precio nuevo. Cada tramo es la cuenta del motor (`proponer_cuota`, días
+    sobre el mes entero), así un mes de un solo precio da lo mismo que antes. `None` si algún día no tiene precio."""
+    precios = [x for x in c.precios if x.vigencia_desde <= mes.hasta
+               and (x.vigencia_hasta is None or x.vigencia_hasta >= mes.desde)]
+    tramos, cubierto_hasta = [], mes.desde - timedelta(days=1)
+    for x in precios:
+        desde, hasta = max(mes.desde, x.vigencia_desde), min(mes.hasta, x.vigencia_hasta or mes.hasta)
+        if desde != cubierto_hasta + timedelta(days=1):
+            return None
+        parte = proponer_cuota(fecha_inicio=desde, fecha_fin=hasta, periodicidad="mensual", importe=x.importe,
+                               ancla=ancla)
+        tramos.append({"precio_id": x.id, "desde": desde, "hasta": hasta, "dias": parte.dias_cubiertos,
+                       "importe": parte.importe, "ajuste": x.motivo.startswith("ajuste")})
+        cubierto_hasta = hasta
+    return tramos if tramos and cubierto_hasta == mes.hasta else None
+
+
 def _proponer(sesion: Session, c: Contrato, ancla: date) -> dict | None:
     """La cuota del mes de `ancla`, o `None` si el contrato no toca ese mes. Puede venir `bloqueada`."""
     mes = periodo_de("mensual", ancla).recortado(c.fecha_inicio, _fin(c))
     if mes is None:
         return None
-    pendiente = ajustes.toca(c, mes.desde)
+    # 🔑 El ajuste se busca en TODO el mes, no sólo en su primer día: uno que cae el 15 también bloquea la cuota hasta
+    # aplicarlo, y después la cuota sale con los dos tramos (`_tramos`).
+    pendiente = ajustes.toca(c, mes.hasta)
     if pendiente is not None:
         return {"contrato_id": c.id, "numero": c.numero,
                 "bloqueada": f"Tiene el ajuste del {pendiente.strftime('%d-%m-%Y')} pendiente: aplicalo primero."}
-    precio = servicio_contratos.precio_en(sesion, c.id, mes.desde)
-    if precio is None:
-        return {"contrato_id": c.id, "numero": c.numero, "bloqueada": "No tiene precio para ese mes."}
-    p = proponer_cuota(fecha_inicio=c.fecha_inicio, fecha_fin=_fin(c), periodicidad="mensual", importe=precio.importe,
-                       ancla=ancla, dia_vencimiento=c.dia_vencimiento)
+    tramos = _tramos(c, mes, ancla)
+    if tramos is None:
+        return {"contrato_id": c.id, "numero": c.numero, "bloqueada": "No tiene precio para todo ese mes."}
+    del_propietario = [x for x in c.conceptos if x.activo and x.paga == "propietario"]
+    if any(x.importe is not None for x in del_propietario):
+        titulares = sesion.get(Propiedad, c.propiedad_id).titulares
+        if sum((x.porcentaje for x in titulares), Decimal(0)) != Decimal(100):
+            return {"contrato_id": c.id, "numero": c.numero,
+                    "bloqueada": "Tiene conceptos que paga el propietario y la propiedad no tiene sus titulares "
+                                 "completos: no hay a quién cargárselos."}
+    p = proponer_cuota(fecha_inicio=c.fecha_inicio, fecha_fin=_fin(c), periodicidad="mensual",
+                       importe=tramos[0]["importe"], ancla=ancla, dia_vencimiento=c.dia_vencimiento)
     vencimiento = max(vencimiento_de(c.dia_vencimiento, p.periodo), p.fecha_emision)
     fijos = [x for x in c.conceptos if x.activo and x.paga == "inquilino" and x.importe is not None]
     variables = [x for x in c.conceptos if x.activo and x.paga == "inquilino" and x.importe is None]
     return {
-        "contrato_id": c.id, "numero": c.numero, "bloqueada": None, "precio_id": precio.id,
-        "periodo_desde": p.periodo.desde, "periodo_hasta": p.periodo.hasta, "fecha_emision": p.fecha_emision,
-        "fecha_vencimiento": vencimiento, "prorrateada": p.prorrateada, "dias_cubiertos": p.dias_cubiertos,
-        "dias_del_periodo": p.dias_del_periodo, "alquiler": p.importe,
+        "contrato_id": c.id, "numero": c.numero, "bloqueada": None, "moneda": c.moneda,
+        "precio_id": tramos[-1]["precio_id"], "periodo_desde": p.periodo.desde, "periodo_hasta": p.periodo.hasta,
+        "fecha_emision": p.fecha_emision, "fecha_vencimiento": vencimiento, "prorrateada": p.prorrateada,
+        "dias_cubiertos": p.dias_cubiertos, "dias_del_periodo": p.dias_del_periodo,
+        "alquiler": sum((x["importe"] for x in tramos), Decimal(0)), "tramos": tramos,
         "conceptos": [{"concepto_id": x.id, "descripcion": _concepto_de_linea(x), "importe": x.importe}
                       for x in fijos],
         "variables": [{"concepto_id": x.id, "descripcion": _concepto_de_linea(x)} for x in variables],
+        # Lo que paga el propietario: con importe fijo se le carga como gasto al generar; sin importe (las expensas
+        # extraordinarias de ese mes) queda para cargarlo como gasto cuando llegue.
+        "gastos_del_propietario": [{"concepto_id": x.id, "descripcion": _concepto_de_linea(x), "importe": x.importe}
+                                   for x in del_propietario if x.importe is not None],
+        "a_cargar_como_gasto": [{"concepto_id": x.id, "descripcion": _concepto_de_linea(x)}
+                                for x in del_propietario if x.importe is None],
     }
+
+
+def _descripcion_del_tramo(p: dict, x: dict) -> str:
+    mes = nombre_del_mes(p["periodo_desde"])
+    if len(p["tramos"]) == 1:
+        dias = f" ({p['dias_cubiertos']}/{p['dias_del_periodo']} días)" if p["prorrateada"] else ""
+        return f"Alquiler {mes}{dias}"
+    return (f"Alquiler {mes}, del {x['desde'].strftime('%d-%m')} al {x['hasta'].strftime('%d-%m')} "
+            f"({x['dias']}/{p['dias_del_periodo']} días{', con el ajuste' if x['ajuste'] else ''})")
 
 
 def _ya_generada(sesion: Session, contrato_id: int, desde: date) -> Cuota | None:
@@ -97,7 +151,9 @@ def _serializar_propuesta(p: dict) -> dict:
     if p["bloqueada"]:
         return p
     return {**p, "alquiler": texto(p["alquiler"]),
-            "conceptos": [{**x, "importe": texto(x["importe"])} for x in p["conceptos"]]}
+            "tramos": [{**x, "importe": texto(x["importe"])} for x in p["tramos"]],
+            "conceptos": [{**x, "importe": texto(x["importe"])} for x in p["conceptos"]],
+            "gastos_del_propietario": [{**x, "importe": texto(x["importe"])} for x in p["gastos_del_propietario"]]}
 
 
 def previsualizar(sesion: Session, ancla: date, *, contrato_ids: list[int] | None = None) -> dict:
@@ -132,11 +188,8 @@ def generar(sesion: Session, ancla: date, *, contrato_ids: list[int] | None = No
         p = _proponer(sesion, c, ancla)
         if p is None or p["bloqueada"] or _ya_generada(sesion, c.id, p["periodo_desde"]):
             continue
-        lineas = [CuotaLinea(tipo="alquiler",
-                             descripcion=f"Alquiler {nombre_del_mes(p['periodo_desde'])}"
-                                         + (f" ({p['dias_cubiertos']}/{p['dias_del_periodo']} días)"
-                                            if p["prorrateada"] else ""),
-                             importe=p["alquiler"])]
+        lineas = [CuotaLinea(tipo="alquiler", descripcion=_descripcion_del_tramo(p, x), importe=x["importe"])
+                  for x in p["tramos"]]
         lineas += [CuotaLinea(tipo="concepto", concepto_id=x["concepto_id"], descripcion=x["descripcion"],
                               importe=x["importe"]) for x in p["conceptos"]]
         for x in p["variables"]:
@@ -148,13 +201,26 @@ def generar(sesion: Session, ancla: date, *, contrato_ids: list[int] | None = No
                                          importe=Decimal(str(importe))))
         total = sum((x.importe for x in lineas), Decimal(0))
         asiento = cuentas.asentar(sesion, fecha=p["fecha_emision"], tercero_id=c.inquilino_id, rol=cuentas.INQUILINO,
-                                  concepto=f"Cuota {nombre_del_mes(p['periodo_desde'])} {c.numero}", debe=total)
+                                  concepto=f"Cuota {nombre_del_mes(p['periodo_desde'])} {c.numero}", debe=total,
+                                  moneda=c.moneda)
         cuota = Cuota(contrato_id=c.id, periodo_desde=p["periodo_desde"], periodo_hasta=p["periodo_hasta"],
                       fecha_emision=p["fecha_emision"], fecha_vencimiento=p["fecha_vencimiento"],
                       prorrateada=p["prorrateada"], dias_cubiertos=p["dias_cubiertos"],
                       dias_del_periodo=p["dias_del_periodo"], precio_id=p["precio_id"], total=total,
                       asiento_id=asiento, lineas=lineas)
         sesion.add(cuota)
+        if p["gastos_del_propietario"]:
+            from app.servicios import gastos as servicio_gastos  # gastos → cobros → cuotas: acá adentro, sin ciclo
+
+            sesion.flush()
+            for x in p["gastos_del_propietario"]:
+                concepto = next(k for k in c.conceptos if k.id == x["concepto_id"])
+                servicio_gastos.nuevo(
+                    sesion, propiedad_id=c.propiedad_id, fecha=p["fecha_emision"],
+                    categoria=_CATEGORIA_DEL_GASTO[concepto.concepto],
+                    descripcion=f"{x['descripcion']} {nombre_del_mes(p['periodo_desde'])} ({c.numero})",
+                    importe=x["importe"], moneda=c.moneda, usuario="Sistema", cuota_id=cuota.id,
+                    concepto_id=concepto.id)
         generadas.append(cuota)
     try:
         sesion.commit()
@@ -173,6 +239,10 @@ def a_dict(sesion: Session, q: Cuota) -> dict:
         "periodo_desde": q.periodo_desde, "periodo_hasta": q.periodo_hasta, "fecha_emision": q.fecha_emision,
         "fecha_vencimiento": q.fecha_vencimiento, "prorrateada": q.prorrateada, "dias_cubiertos": q.dias_cubiertos,
         "dias_del_periodo": q.dias_del_periodo, "total": texto(q.total), "estado": q.estado, "moneda": c.moneda,
+        "gastos_del_propietario": [{"id": g.id, "descripcion": g.descripcion, "importe": texto(g.importe),
+                                    "anulado": g.anulado}
+                                   for g in sesion.scalars(select(Gasto).where(Gasto.cuota_id == q.id)
+                                                           .order_by(Gasto.id))],
         "cobro_id": sesion.scalar(select(Cobro.id).where(Cobro.cuota_id == q.id, Cobro.anulado.is_(False))),
         "lineas": [{"id": x.id, "tipo": x.tipo, "concepto_id": x.concepto_id, "descripcion": x.descripcion,
                     "importe": texto(x.importe)} for x in q.lineas],
@@ -239,6 +309,10 @@ def anular(sesion: Session, cuota_id: int, *, motivo: str) -> dict:
     if not (motivo or "").strip():
         raise Invalido("Anular una cuota pide un motivo.")
     c = sesion.get(Contrato, q.contrato_id)
+    from app.servicios import gastos as servicio_gastos
+
+    for g in sesion.scalars(select(Gasto).where(Gasto.cuota_id == q.id, Gasto.anulado.is_(False))):
+        servicio_gastos.anular_sin_confirmar(sesion, g, motivo=f"anulación de la cuota: {motivo.strip()}")
     cuentas.contraasentar(sesion, q.asiento_id, concepto=f"Anulación cuota {nombre_del_mes(q.periodo_desde)} "
                                                          f"{c.numero}: {motivo.strip()}")
     q.estado = "anulada"

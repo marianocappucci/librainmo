@@ -14,7 +14,7 @@ import { createLayout } from 'libra-ui/Layout'
 import { ICONOS } from 'libra-ui/iconos-identidad'
 
 import { useAuth } from '@/context/AuthContext'
-import { LOGO, PRODUCTO, WORDMARK } from '@/branding'
+import { PRODUCTO, WORDMARK } from '@/branding'
 import { etiquetaDeRol } from '@/lib/dominio'
 
 type Usuario = {
@@ -26,7 +26,8 @@ type Usuario = {
 const Cascaron = createLayout<Usuario>({
   productName: PRODUCTO,
   productInitial: 'I',
-  logo: LOGO,
+  // La marca de la familia (libra-ui ADR-096): casa y llave sobre el lima; en el login, además, la foto del hero de fondo (ADR-092).
+  producto: 'librainmo',
   // 🔴 El interlineado va PEGADO al tamaño (`/[17px]`) y no como un `leading-*` aparte: en Tailwind v4 una utilidad de tamaño emite
   // TAMBIÉN su `line-height`, así que el `leading-none` de `libra-ui` pierde contra el `text-[15px]` de acá.
   wordmarkClassName: `${WORDMARK} text-[15px]/[17px]`,

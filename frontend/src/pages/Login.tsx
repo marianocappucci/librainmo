@@ -12,13 +12,14 @@
 // los tres juntos cuando el router los incluya.
 import { createLogin } from 'libra-ui/Login'
 
-import { LOGO, PRODUCTO, WORDMARK } from '@/branding'
+import { PRODUCTO, WORDMARK } from '@/branding'
 
 export const Login = createLogin({
   productName: PRODUCTO,
-  // `productInitial` es obligatorio en la config del kit aunque haya `logo`.
+  // `productInitial` es obligatorio en la config del kit aunque haya `producto`.
   productInitial: 'I',
-  logo: LOGO,
+  // La marca de la familia (libra-ui ADR-096): casa y llave sobre el lima; en el login, además, la foto del hero de fondo (ADR-092).
+  producto: 'librainmo',
   wordmarkClassName: `${WORDMARK} text-[22px]`,
   // A Inicio: `App.tsx` manda cualquier ruta desconocida ahí mismo.
   redirectTo: '/inicio',

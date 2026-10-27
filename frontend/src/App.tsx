@@ -23,21 +23,21 @@ import { LiquidacionNueva } from '@/pages/LiquidacionNueva'
 import { Liquidaciones } from '@/pages/Liquidaciones'
 import { Login } from '@/pages/Login'
 import { Logs } from '@/pages/Logs'
+import { ForgotPassword, ResetPassword } from '@/pages/PasswordReset'
 import { PropiedadDetalle } from '@/pages/PropiedadDetalle'
 import { Propiedades } from '@/pages/Propiedades'
 import { Usuarios } from '@/pages/Usuarios'
 
-// Exportado para el test de ruteo: lo que hay que poder montar es ESTO, con un `MemoryRouter` alrededor. `App` trae su propio
-// `AuthProvider`, que en el test se mockea.
-export function Ruteo() {
+// El guard de sesión y las rutas privadas: lo que se ve cuando la URL no es una de las públicas de `Ruteo`.
+function Aplicacion() {
   const { user, loading } = useAuth()
 
   // Mientras no se sepa si hay sesión no se decide nada: con un `if (!user)` directo, cada recarga mandaría al login a alguien que ya
   // estaba adentro.
   if (loading) return <p className="p-6 text-muted-foreground">Cargando…</p>
 
-  // Este producto no rutea el login: sin sesión devuelve `<Login />` para cualquier URL, y al entrar el login manda a Inicio. Los
-  // Términos pendientes los resuelve el `AuthProvider`.
+  // Este producto no rutea el login: sin sesión devuelve `<Login />` para cualquier URL (salvo las dos de recuperación, que son
+  // públicas: ver `Ruteo`), y al entrar el login manda a Inicio. Los Términos pendientes los resuelve el `AuthProvider`.
   if (!user) return <Login />
 
   return (
@@ -70,6 +70,21 @@ export function Ruteo() {
             nada. Lo que las pantallas hacen es no ofrecer botones que van a dar 403. */}
         <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Route>
+    </Routes>
+  )
+}
+
+// Exportado para el test de ruteo: lo que hay que poder montar es ESTO, con un `MemoryRouter` alrededor. `App` trae su propio
+// `AuthProvider`, que en el test se mockea.
+//
+// 🔴 Las dos pantallas de recuperación van acá, **antes** de saber si hay sesión: quien las abre no puede
+// entrar, y esperar a `/auth/me` las taparía con el «Cargando…» o con el login. Todo lo demás sigue el guard de `Aplicacion`.
+export function Ruteo() {
+  return (
+    <Routes>
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="*" element={<Aplicacion />} />
     </Routes>
   )
 }

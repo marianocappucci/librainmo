@@ -19,8 +19,12 @@ from libraauth.auditoria import (
     configurar_auditoria,
 )
 from libraauth.auth_events import AuthEventRepository
-from libraauth.bootstrap import ensure_default_admin
+from libraauth.bootstrap import ensure_default_admin, ensure_demo_user
+from libraauth.demo_codigos import DemoCodigoRepository
 from libraauth.migrar import exigir_schema_al_dia
+from libraauth.password_reset import PasswordResetService
+from libraauth.session_auth import build_demo_codigos_router, build_smtp_settings_router, demo_username
+from libraauth.smtp_settings import SmtpSettingsRepository, resolver_smtp_config
 from libraauth.terminos import TerminosRepository, build_terminos_router
 from libracore.clientes_router import build_clientes_router
 from libracore.config_router import (
@@ -34,6 +38,7 @@ from libracore.modules_gate import require_module
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
+from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
 
 from app import db
@@ -48,7 +53,7 @@ from app.auth import (
 from app.config import Config
 from app.errores import ErrorDeDominio
 from app.modulos import ModuleRepository, exigir_modulo
-from app.roles import ROLES, TODOS
+from app.roles import OPERADOR, ROLES, TODOS
 from app.routers import auth as auth_router
 from app.routers import cobros, contratos, cuotas, liquidaciones, propiedades, salud
 from app.routers import usuarios as usuarios_router
@@ -122,6 +127,13 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
         # una contraseña y la imprime, y no son intercambiables.
         ensure_default_admin(usuarios, env_prefix="LIBRAINMO")
 
+    # El visitante de la demo pública, **sólo si la instancia es una demo** (`DEMO_MODE` + `DEMO_USERNAME`, las mismas
+    # dos variables que registran `POST /auth/demo`): en una instancia de cliente devuelve None y no toca la base.
+    # 🔴 `rol=OPERADOR` explícito: el default de `libraauth` es `staff`, que acá no existe y cortaría el arranque.
+    # Nunca admin: el visitante no puede entrar a Usuarios, Configuración ni al backup. Sin esta llamada la ruta
+    # existe y no tiene a quién loguear (503).
+    ensure_demo_user(usuarios, rol=OPERADOR)
+
     modulos = ModuleRepository(config.database_url)
     modulos.ensure_seeded()
 
@@ -179,6 +191,33 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     app.include_router(build_tema_router())
     app.include_router(build_tema_admin_router(), dependencies=[Depends(require_admin_o_servicio_o_panel)])
     app.include_router(auth_router.construir_router())
+
+    # Los códigos de acceso de la demo pública: se emiten desde el backoffice y los consume `POST /auth/demo`.
+    # 🔴 `POST /auth/demo` falla cerrado sin esta línea (503 en vez de dejar entrar sin código): una demo abierta a
+    # internet es justo lo que el código existe para evitar. Misma `sesiones` que los usuarios (una sola base).
+    if demo_username():
+        app.state.demo_codigos = DemoCodigoRepository(sesiones)
+        app.include_router(build_demo_codigos_router())
+
+    # El correo saliente de la instancia (`/admin/smtp`) y la recuperación de contraseña, que lo usa para mandar el
+    # enlace. Sin SMTP la app levanta igual: `forgot-password` contesta 503 recién cuando alguien lo pide.
+    app.state.smtp_settings = SmtpSettingsRepository(sesiones)
+    app.include_router(build_smtp_settings_router())
+    # `POST /admin/smtp/probar`: resuelve por el MISMO camino que los envíos, así el botón mide lo que va a pasar. El
+    # gate lo pone el producto: el router del motor no trae ninguno y esto abre una sesión SMTP con las credenciales
+    # de la instancia.
+    app.include_router(
+        build_smtp_probe_router(lambda: resolver_smtp_config(sesiones)),
+        dependencies=[Depends(require_admin)],
+    )
+    app.state.password_reset = PasswordResetService(
+        sesiones,
+        product_name="LibraInmo",
+        reset_url_base=os.environ.get("LIBRAINMO_RESET_URL_BASE", "https://dev.librainmo.com.ar/reset-password"),
+        # CALLABLE, no un valor: se resuelve en cada envío. Con uno fijo, guardar el SMTP por pantalla no tendría
+        # efecto hasta recrear el contenedor.
+        smtp_config=lambda: resolver_smtp_config(sesiones),
+    )
     app.include_router(usuarios_router.construir_router())
     # `GET/POST /terminos…`. NO se gatea desde afuera: es el único camino para
     # salir del gate.

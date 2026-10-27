@@ -5,11 +5,14 @@
 // la instancia lo pide. Los Términos y Condiciones no pasan por acá: los
 // atiende el `AuthProvider` apenas hay sesión.
 //
-// Sin `forgotPasswordPath`, `demoPath` ni `captchaPath` a propósito: el backend
-// de LibraInmo no monta todavía la recuperación de contraseña (necesita SMTP),
-// el login de demo ni el captcha (`app/routers/auth.py`). Declararlos en la
-// pantalla sin que el backend los atienda dejaría un enlace a un 404. Se suman
-// los tres juntos cuando el router los incluya.
+// Los tres opcionales del kit van declarados, cada uno de la mano de lo que monta `app/routers/auth.py`:
+//
+// - `forgotPasswordPath`: el enlace «¿Olvidaste tu contraseña?». Sin esta línea el kit no lo pinta, la pantalla queda idéntica y no
+//   falla nada. Lo atiende `PasswordReset.tsx`, con las rutas públicas de `App.tsx`.
+// - `demoPath`: el botón «Entrar a la demo». Declararlo no alcanza para que aparezca: el kit consulta `GET /auth/demo` al montar y sólo
+//   lo pinta si la instancia contesta que es una demo, así que en una instancia de cliente no se ve nada.
+// - `captchaPath`: el recuadro «No soy un robot» (ALTCHA), que va SIEMPRE con `captcha=True` en el router. Mientras no se tilde,
+//   «Ingresar» queda deshabilitado.
 import { createLogin } from 'libra-ui/Login'
 
 import { PRODUCTO, WORDMARK } from '@/branding'
@@ -23,4 +26,7 @@ export const Login = createLogin({
   wordmarkClassName: `${WORDMARK} text-[22px]`,
   // A Inicio: `App.tsx` manda cualquier ruta desconocida ahí mismo.
   redirectTo: '/inicio',
+  forgotPasswordPath: '/forgot-password',
+  demoPath: '/auth/demo',
+  captchaPath: '/auth/captcha',
 })

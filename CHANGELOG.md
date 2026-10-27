@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- **Pantallas de Clientes y Configuración** (SPA, sin cambios de backend): `/clientes` y `/clientes/:id` son las del kit (`libra-ui/comercio/Clientes` y `ClienteDetalle`) sobre `/api/clientes` del motor, con el padrón de ARCA, los comprobantes y MercadoPago apagados; es donde se corrige el nombre o el CUIT de un inquilino, propietario o garante ya cargado. `/configuracion` (sólo administrador) es `createConfiguracion` del kit con Empresa y Datos / Backup, sobre `/api/config/empresa` y `/api/config/backups`; sin integraciones, porque el producto todavía no monta sus routers. Usuarios dice dónde está la copia de seguridad.
 - **`POST /auth/verify`** para el login de `/docs/` de la landing (`librainmo_web`): valida credenciales sin crear sesión y sólo con el secreto compartido `DOCS_AUTH_SECRET`; sin el secreto en la instancia falla cerrado con 401.
 - **Identidad de la familia** (`libra-ui` v0.182.0, ADR-096): acento lima, la marca de casa y llave en el login, la sidebar y el favicon, y la foto del hero de fondo en el login. Se va el logo propio (`LOGO`) de `branding.ts`.
 - 🔴 **El alta y el deploy veían cero migraciones.** `nuevo_cliente.py` y `panel_admin.py` llamaban a `configure(**CONFIGURACION)`, y el motor lee las `migraciones=` del commit de la imagen con `ast`, sin importar el script: no encontraba ninguna y el alta de la demo arrancó sin migrar. Ahora los dos declaran el mismo `configure(...)` literal (se va `scripts/configuracion.py`) y el test las lee con el mismo `migraciones_declaradas` del motor.

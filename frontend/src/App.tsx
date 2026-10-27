@@ -2,9 +2,12 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { Layout } from '@/components/Layout'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { ClienteDetalle } from '@/pages/ClienteDetalle'
+import { Clientes } from '@/pages/Clientes'
 import { CobrarCuota } from '@/pages/CobrarCuota'
 import { CobroDetalle } from '@/pages/CobroDetalle'
 import { Cobros } from '@/pages/Cobros'
+import { Configuracion } from '@/pages/Configuracion'
 import { ContratoDetalle } from '@/pages/ContratoDetalle'
 import { ContratoEditar } from '@/pages/ContratoEditar'
 import { ContratoNuevo } from '@/pages/ContratoNuevo'
@@ -43,6 +46,8 @@ export function Ruteo() {
         <Route path="/inicio" element={<Inicio />} />
         <Route path="/propiedades" element={<Propiedades />} />
         <Route path="/propiedades/:id" element={<PropiedadDetalle />} />
+        <Route path="/clientes" element={<Clientes />} />
+        <Route path="/clientes/:id" element={<ClienteDetalle />} />
         <Route path="/contratos" element={<Contratos />} />
         <Route path="/contratos/nuevo" element={<ContratoNuevo />} />
         <Route path="/contratos/:id" element={<ContratoDetalle />} />
@@ -60,6 +65,7 @@ export function Ruteo() {
         <Route path="/fondos-de-terceros" element={<FondosDeTerceros />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/logs" element={<Logs />} />
+        <Route path="/configuracion" element={<Configuracion />} />
         {/* Las rutas no llevan guarda de rol: el permiso lo decide el servidor, y una ruta escondida que igual carga datos no protege
             nada. Lo que las pantallas hacen es no ofrecer botones que van a dar 403. */}
         <Route path="*" element={<Navigate to="/inicio" replace />} />

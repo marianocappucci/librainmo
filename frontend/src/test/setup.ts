@@ -82,3 +82,20 @@ if (typeof Element !== 'undefined') {
   Element.prototype.setPointerCapture ??= () => {}
   Element.prototype.releasePointerCapture ??= () => {}
 }
+
+/**
+ * jsdom no implementa `ResizeObserver`.
+ *
+ * El `Switch` de Radix lo usa (`use-size`) para medir el interruptor cuando va dentro de un formulario, así que abrir el diálogo «Editar»
+ * de la ficha de un cliente (`libra-ui/comercio/ClienteDetalle`, que trae un interruptor) revienta con «ResizeObserver is not defined» —
+ * un error del entorno, no del código.
+ *
+ * 🟡 **No observa nada, y hay que saber qué NO prueba:** que algo reaccione al cambio de tamaño de un elemento. Eso se mide en un navegador.
+ */
+if (typeof globalThis !== 'undefined' && !('ResizeObserver' in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}

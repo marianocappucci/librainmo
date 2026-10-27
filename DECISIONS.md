@@ -179,3 +179,36 @@ landing al leer el código.
    una propiedad que no está de baja (`servicios/clientes.impide_desactivar`, el gancho `impide_desactivar` del router
    de clientes del motor, `libracore` v1.199.0).
 
+## ADR-009 — Demo pública con código, captcha siempre y recuperación de contraseña por correo
+
+**Estado:** aceptada (2026-10-27). El captcha en el login es decisión del humano (2026-09-11, ADR-014 de `libraauth`);
+el resto copia el patrón de LibraCargo, el hermano que también tiene una sola base para dominio, `libraauth` y
+`libracore`.
+
+**Contexto.** LibraInmo nació con `build_json_api_auth_router(incluir_verify=True)` y sin tres piezas del login que el
+resto de la familia tiene, más el reset diario de la demo.
+
+**Decisión.**
+1. **Demo con código de acceso.** `incluir_demo=True` registra `POST /auth/demo`, pero la ruta solo existe si la
+   instancia tiene `DEMO_MODE` y `DEMO_USERNAME`; en una de cliente no existe. `main.py` cablea la otra mitad:
+   `ensure_demo_user(usuarios, rol=OPERADOR)` y, solo en la demo, `app.state.demo_codigos` con el router de códigos
+   (`/admin/demo-codigos`, que usa el backoffice). **El rol es `operador`, nunca `admin`**: el default de `libraauth`
+   es `staff`, que acá no existe y cortaría el arranque, y un visitante admin llegaría a Usuarios, Configuración y el
+   backup. Con `operador` el visitante opera el día a día; lo del administrador lo ve, pero no lo escribe. Una demo no
+   tiene Términos que aceptar (`exige_aceptacion`).
+2. **Captcha ALTCHA siempre** (`captcha=True`), en el login y en forgot-password, no recién después de N fallos. La SPA
+   declara `captchaPath` en los dos. La suite lo aprueba con un doble (conftest) y lo mide con la función real en
+   `test_captcha_login.py`.
+3. **Recuperación de contraseña por correo** (`incluir_password_reset=True`) con el SMTP de la instancia:
+   `SmtpSettingsRepository` guarda la configuración en la base (la contraseña cifrada con `SECRET_KEY`), el router
+   `/admin/smtp` la edita (solo administrador) y `/admin/smtp/probar` abre la conexión por el mismo camino que los
+   envíos. `PasswordResetService` resuelve el SMTP en cada envío (un callable), así que guardarlo por pantalla tiene
+   efecto sin reiniciar. El enlace sale a `LIBRAINMO_RESET_URL_BASE` (default `https://dev.librainmo.com.ar/reset-password`;
+   cada instancia pone el suyo). Sin SMTP la app levanta igual y forgot-password contesta 503.
+4. **Reset nocturno de la demo** (`scripts/reset_demo.sh`, 05:10): base de cero, migraciones de la imagen, códigos de
+   acceso devueltos y semilla (`scripts/semilla_demo.py`, ya en la imagen) corrida adentro del contenedor, sin pasar
+   por la API.
+
+**Consecuencias.** Una sola base: el `DROP SCHEMA` del reset se lleva `demo_codigos`, por eso el script los vuelca y los
+devuelve. La Configuración gana una pestaña «Integraciones» con solo el correo; ARCA y MercadoPago siguen sin declararse
+hasta que el producto monte sus routers.

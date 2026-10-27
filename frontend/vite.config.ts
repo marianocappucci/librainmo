@@ -18,8 +18,9 @@ import Icons from 'unplugin-icons/vite'
 // secuestrada por el proxy y el navegador recibiría JSON en vez de la página.
 //
 // Estas son las mismas que `prefijos_api` de `app/asgi.py` (lo que el catch-all
-// de la SPA NO se come), más la documentación de la API, que sólo existe en dev.
-const RUTAS_API = ['/api', '/auth', '/terminos', '/salud', '/health', '/docs', '/openapi.json']
+// de la SPA NO se come), más la documentación de la API, que sólo existe en dev. `/admin` es el correo saliente (`/admin/smtp`,
+// Configuración → Integraciones) y los códigos de la demo (`/admin/demo-codigos`).
+const RUTAS_API = ['/api', '/auth', '/admin', '/terminos', '/salud', '/health', '/docs', '/openapi.json']
 
 // 🔴 8107, el puerto de `docs/desarrollo-local.md` y de `docker-compose.yml`.
 // Si cambia, cambia en los dos y acá. Se puede pisar con `LIBRAINMO_BACKEND`

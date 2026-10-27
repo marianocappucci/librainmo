@@ -33,4 +33,4 @@ else:
 # `montar_spa` es del motor: cabeceras de caché, `HEAD`, y 404 (no el index) para
 # las rutas de `/api` que no existen.
 if (FRONTEND_DIST / "index.html").is_file():
-    montar_spa(app, FRONTEND_DIST, prefijos_api=("api", "auth", "terminos", "salud", "health"))
+    montar_spa(app, FRONTEND_DIST, prefijos_api=("api", "auth", "admin", "terminos", "salud", "health"))

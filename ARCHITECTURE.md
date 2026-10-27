@@ -36,7 +36,9 @@ Diseño del producto: página `inmobiliaria-administracion-alquileres-diseno` de
   `usuarios`, y las del dominio van a apuntar a `clients`.
 - **`libraauth`** (v0.55.0): usuarios, sesión por cookie `inmo_session`, log de accesos, log de
   actividad (`AUDITABLES`, lista blanca, hoy vacía), Términos y Condiciones (gate de 403 hasta
-  aceptar) y el router de usuarios unificado (`/api/usuarios`).
+  aceptar), el router de usuarios unificado (`/api/usuarios`) y el login completo: `verify` para `/docs/`,
+  demo con código de acceso (rol `operador`), captcha ALTCHA y recuperación de contraseña por correo con el
+  SMTP de la instancia (`/admin/smtp`) (ADR-009).
 - **`libracore`** (v1.196.1): reloj de Argentina (`libracore.fechas`), headers de seguridad
   (`CSP_SPA`), empresa/logo (`/api/config/empresa`), backup (`/api/config/backups…`), gate por módulo
   (`modules_gate.require_module`) y SPA. Y **su schema vive en la base

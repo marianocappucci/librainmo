@@ -137,6 +137,10 @@ migra antes de arrancar. El `Dockerfile` construye la SPA en una etapa aparte y 
 | `LIBRAINMO_DATA_DIR` (o `DATA_DIR`) | Backups y logo | `./data` |
 | `LIBRAINMO_FRONTEND_DIST` | Pisa dónde se busca el build de la SPA (lo usan los tests) | — |
 | `LIBRA_SERVICE_TOKEN` / `LIBRA_PANEL_TOKEN` | Credenciales del backoffice y del panel para `/api/usuarios` | vacías (sólo admin) |
+| `DEMO_MODE` + `DEMO_USERNAME` | Prenden la demo pública (`POST /auth/demo` con código de acceso, rol `operador`). Van **las dos** o no hay demo; en una instancia de cliente no se ponen | — (sin demo) |
+| `DEMO_PASSWORD` / `DEMO_NAME` | Opcionales de la demo: una clave tipeable para el visitante y su nombre | clave aleatoria / `Visitante de la demo` |
+| `LIBRAINMO_RESET_URL_BASE` | Pantalla a la que apunta el enlace del correo de recuperación de contraseña | `https://dev.librainmo.com.ar/reset-password` |
+| `LIBRAAUTH_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FROM_EMAIL` | SMTP de respaldo para el correo de recuperación, si no hay uno guardado en Configuración → Integraciones | vacías (forgot-password contesta 503) |
 
 ## Planes y módulos
 

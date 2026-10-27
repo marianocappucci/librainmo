@@ -4,8 +4,7 @@
 // comprobantes, que apuntan a `/facturas`, `/presupuestos` y `/remitos`, rutas que acá no existen), ni la bandeja de MercadoPago
 // (`conMercadoPago={false}`: sin el auto-facturar ni los alias de facturación), ni el padrón de ARCA (`conConsultaCuit={false}`).
 //
-// ⚠️ El diálogo «Editar» del kit muestra igual el interruptor «Facturación automática por MercadoPago»: no está detrás de
-// `conMercadoPago` (libra-ui v0.182.0). Es un hueco del kit, no de este producto: el arreglo va en `libra-ui`, no en una copia acá.
+// Desde libra-ui v0.182.1 el diálogo «Editar» también respeta `conMercadoPago` (antes mostraba igual la facturación automática).
 import { ClienteDetalle as ClienteDetalleComercio } from 'libra-ui/comercio/ClienteDetalle'
 
 export function ClienteDetalle() {

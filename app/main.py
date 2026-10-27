@@ -186,8 +186,8 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # Los clientes (inquilinos, propietarios, garantes) son los del motor, con su router: es el que usa
     # `SelectCliente` de libra-ui para elegir y dar de alta en el lugar.
     #
-    # `impide_desactivar`: la baja de un inquilino con contrato abierto, de un garante o de un titular dejaría al dominio
-    # apuntando a un cliente inactivo. El motor no ve esas tablas; el producto le dice por qué no.
+    # `impide_desactivar`: la baja de un inquilino con contrato abierto, de un garante o de un titular dejaría al
+    # dominio apuntando a un cliente inactivo. El motor no ve esas tablas; el producto le dice por qué no.
     def _impide_desactivar(cliente_id: int) -> str | None:
         with sesiones() as sesion:
             return servicio_clientes.impide_desactivar(sesion, cliente_id)

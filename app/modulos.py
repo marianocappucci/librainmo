@@ -19,6 +19,9 @@ Diferencias con MedLibra, a propósito:
   apaga lo que el plan no incluye.
 - Un módulo que no existe en `plans.py` está **apagado** (falla cerrado): un error de
   tipeo en `exigir_modulo("alquilers")` no deja una ruta abierta.
+- 🔴 **Un add-on (`plans.ADDONS`) arranca APAGADO**: no se siembra y sin fila está apagado. Es la
+  regla inversa a la de los módulos del plan; sin ella `resguardo_externo` quedaría prendido en todas
+  las instancias al arrancar. Su fila la crea el backoffice (`app.database.set_addon`) al prenderlo.
 """
 
 from __future__ import annotations
@@ -49,6 +52,8 @@ class ModuleRepository:
             apply_plan_modules(self.database_url, active_modules=faltan, all_modules=faltan, plan=PLAN_POR_DEFECTO)
 
     def is_enabled(self, modulo: str) -> bool:
+        if modulo in ADDONS:
+            return bool(modulos_del_motor.get_modulos().get(modulo, False))
         if modulo not in TODOS_LOS_MODULOS:
             return False
         # Sin fila (no debería pasar tras `ensure_seeded`): el seed no bloquea.
@@ -58,7 +63,7 @@ class ModuleRepository:
         return {m: h for m, h in modulos_del_motor.get_modulos().items() if m in TODOS_LOS_MODULOS}
 
     def set_enabled(self, modulo: str, habilitado: bool) -> None:
-        if modulo not in TODOS_LOS_MODULOS:
+        if modulo not in TODOS_LOS_MODULOS | ADDONS:
             raise ValueError(f"Módulo desconocido: {modulo!r} (válidos: {', '.join(MODULOS)})")
         # `set_addon` del motor sólo cambia `habilitado` si la fila existe (no toca su `plan`).
         modulos_del_motor.set_addon(modulo, habilitado)

@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- **`POST /auth/verify`** para el login de `/docs/` de la landing (`librainmo_web`): valida credenciales sin crear sesión y sólo con el secreto compartido `DOCS_AUTH_SECRET`; sin el secreto en la instancia falla cerrado con 401.
 - **Identidad de la familia** (`libra-ui` v0.182.0, ADR-096): acento lima, la marca de casa y llave en el login, la sidebar y el favicon, y la foto del hero de fondo en el login. Se va el logo propio (`LOGO`) de `branding.ts`.
 - 🔴 **El alta y el deploy veían cero migraciones.** `nuevo_cliente.py` y `panel_admin.py` llamaban a `configure(**CONFIGURACION)`, y el motor lee las `migraciones=` del commit de la imagen con `ast`, sin importar el script: no encontraba ninguna y el alta de la demo arrancó sin migrar. Ahora los dos declaran el mismo `configure(...)` literal (se va `scripts/configuracion.py`) y el test las lee con el mismo `migraciones_declaradas` del motor.
 - **Pantallas del mes**: cuotas (generar con las expensas, ficha, cobrar), cobros, ajuste en la ficha del contrato, gastos, liquidaciones y fondos de terceros. **Pantallas de la tanda 1**: propiedades con titulares y contratos. Catálogo de índices y medios de cobro por API; errores de validación en español; `/api/tema`. Pin de `libracore` a v1.197.1: anular un cobro anula su recibo en la misma transacción. Probado de punta a punta contra el backend real (alta, ajuste con el ICL bajado del BCRA, cobro con punitorio y recibo, liquidación).

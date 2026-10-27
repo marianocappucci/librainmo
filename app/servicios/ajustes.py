@@ -13,6 +13,9 @@
    escribe con `contratos.actualizar_precio`. El importe queda congelado en `contrato_precios`.
 5. **Mientras un ajuste está pendiente, no se genera la cuota de ese contrato** (`servicios/cuotas.py`): cobrar con el
    precio viejo y corregir después es justo lo que una inmobiliaria no puede hacer con un inquilino.
+6. 🔑 **Sin fecha, se propone el ajuste del mes en curso**, aunque caiga más adelante en el mes: la cuota de un mes con
+   ajuste el 15 está bloqueada desde el día 1, y si la propuesta esperara al 15 esa cuota no se podría emitir hasta
+   entonces. Por índice puede faltar todavía el valor de esa fecha (409 con lo que falta, como siempre).
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from decimal import Decimal
 
 from libracore import indices_ajuste as ia
 from libracore import indices_descarga
-from libracore.periodos import periodo_anclado
+from libracore.periodos import periodo_anclado, periodo_de
 from sqlalchemy.orm import Session
 
 from app import tiempo
@@ -92,7 +95,10 @@ def proponer(sesion: Session, contrato_id: int, *, fecha: date | None = None) ->
     c = servicio_contratos._obtener(sesion, contrato_id)
     if c.metodo_ajuste == "fijo":
         raise Invalido("Este contrato no se ajusta.")
-    fecha = fecha or tiempo.hoy()
+    if fecha is None:
+        hoy = tiempo.hoy()
+        fin_de_mes = periodo_de("mensual", hoy).hasta
+        fecha = fin_de_mes if toca(c, hoy) is None and toca(c, fin_de_mes) is not None else hoy
     vigente = _vigente(c)
     periodo = periodo_anclado(c.periodicidad_ajuste, ancla=fecha, arranque=c.fecha_inicio)
     respuesta = {"fecha_ajuste": periodo.desde, "proximo_ajuste": periodo.hasta + timedelta(days=1),

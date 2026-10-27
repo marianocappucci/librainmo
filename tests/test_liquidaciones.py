@@ -62,7 +62,8 @@ def test_la_liquidacion_cobra_comision_solo_sobre_el_alquiler(admin, mes):
 
 def test_emitir_pagar_y_los_fondos_de_terceros(admin, mes):
     f = admin.get("/api/reportes/fondos-de-terceros").json()
-    assert f["total_a_pagar"] == "285000.00" and f["inquilinos_deudores"] == []      # 305.000 − 20.000
+    assert f["totales"] == [{"moneda": "ARS", "a_pagar": "285000.00", "adeudado": "0.00"}]  # 305.000 − 20.000
+    assert f["inquilinos_deudores"] == []
 
     r = admin.post("/api/liquidaciones", json={"propietario_id": mes["uno"], "fecha": "2026-11-30",
                                                "hasta": "2026-11-30"})
@@ -79,7 +80,7 @@ def test_emitir_pagar_y_los_fondos_de_terceros(admin, mes):
     assert admin.post(f"/api/gastos/{mes['gasto']['id']}/anular", json={"motivo": "x"}).status_code == 409
 
     f = admin.get("/api/reportes/fondos-de-terceros").json()
-    assert f["total_a_pagar"] == "276000.00"                                         # se descontó la comisión
+    assert f["totales"][0]["a_pagar"] == "276000.00"                                 # se descontó la comisión
     assert admin.post(f"/api/liquidaciones/{liq['id']}/pagar",
                       json={"fecha": "2026-11-29", "medio_pago": "transferencia"}).status_code == 422
     assert admin.post(f"/api/liquidaciones/{liq['id']}/pagar",
@@ -128,7 +129,7 @@ def test_un_inquilino_que_debe_aparece_en_los_fondos(admin, mes):
     admin.post("/api/cuotas/generar", json={"ancla": "2026-12-05"})
     f = admin.get("/api/reportes/fondos-de-terceros").json()
     assert [(x["nombre"], x["saldo"]) for x in f["inquilinos_deudores"]] == [("Inquilina Ficticia", "305000.00")]
-    assert f["total_adeudado"] == "305000.00"
+    assert f["totales"] == [{"moneda": "ARS", "a_pagar": "285000.00", "adeudado": "305000.00"}]
 
 
 @pytest.mark.parametrize("extra", [{"categoria": "viaje"}, {"importe": "0"}, {"propiedad_id": 99999}])

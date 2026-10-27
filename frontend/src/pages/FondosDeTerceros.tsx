@@ -6,6 +6,9 @@
  * (`/liquidaciones/nueva?propietario=`), que es la forma de saldarle la cuenta.
  *
  * Los saldos salen del libro de terceros del motor (debe − haber) y llegan como texto decimal; sólo se muestran.
+ *
+ * 🔑 **Nunca se suman monedas distintas**: la API trae un total por moneda (`totales`) y cada fila dice la suya. Un propietario con
+ * saldo en pesos y en dólares sale en dos filas, cada una con su enlace para liquidarle esa moneda.
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -18,7 +21,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { mensajeDeError, reportes } from '@/lib/api'
 import type { FondosDeTerceros as Fondos } from '@/lib/api'
+import { nombreDeMoneda } from '@/lib/dominio'
 import { pesos } from '@/lib/importes'
+
+/** Los totales de las monedas que aparecen en las filas de una tabla (en el orden en que la API los manda). */
+function totalesDe(fondos: Fondos, filas: { moneda: string }[]) {
+  return fondos.totales.filter((t) => filas.some((f) => f.moneda === t.moneda))
+}
 
 export function FondosDeTerceros() {
   const [fondos, setFondos] = useState<Fondos | null>(null)
@@ -49,13 +58,25 @@ export function FondosDeTerceros() {
               <CardHeader>
                 <CardTitle className="text-sm font-normal text-muted-foreground">Se les debe a los propietarios</CardTitle>
               </CardHeader>
-              <CardContent className="text-2xl font-semibold">{pesos(fondos.total_a_pagar)}</CardContent>
+              <CardContent className="space-y-1 text-2xl font-semibold">
+                {fondos.totales.map((t) => (
+                  <div key={t.moneda} data-testid={`a-pagar-${t.moneda}`}>
+                    {pesos(t.a_pagar, t.moneda)}
+                  </div>
+                ))}
+              </CardContent>
             </Card>
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm font-normal text-muted-foreground">Deben los inquilinos</CardTitle>
               </CardHeader>
-              <CardContent className="text-2xl font-semibold">{pesos(fondos.total_adeudado)}</CardContent>
+              <CardContent className="space-y-1 text-2xl font-semibold">
+                {fondos.totales.map((t) => (
+                  <div key={t.moneda} data-testid={`adeudado-${t.moneda}`}>
+                    {pesos(t.adeudado, t.moneda)}
+                  </div>
+                ))}
+              </CardContent>
             </Card>
           </div>
 
@@ -79,12 +100,15 @@ export function FondosDeTerceros() {
                   </TableHeader>
                   <TableBody>
                     {fondos.a_pagar_a_propietarios.map((p) => (
-                      <TableRow key={p.tercero_id}>
+                      <TableRow key={`${p.tercero_id}-${p.moneda}`}>
                         <TableCell className="font-medium">{p.nombre}</TableCell>
-                        <TableCell className="text-right">{pesos(p.saldo)}</TableCell>
+                        <TableCell className="text-right">{pesos(p.saldo, p.moneda)}</TableCell>
                         <TableCell className="text-right">
                           <Button asChild variant="outline" size="sm">
-                            <Link to={`/liquidaciones/nueva?propietario=${p.tercero_id}`} aria-label={`Liquidar a ${p.nombre}`}>
+                            <Link
+                              to={`/liquidaciones/nueva?propietario=${p.tercero_id}&moneda=${p.moneda}`}
+                              aria-label={`Liquidar a ${p.nombre} en ${nombreDeMoneda(p.moneda)}`}
+                            >
                               <FileSpreadsheet className="size-4" />
                               Liquidar
                             </Link>
@@ -94,11 +118,13 @@ export function FondosDeTerceros() {
                     ))}
                   </TableBody>
                   <TableFooter>
-                    <TableRow>
-                      <TableCell>Total a pagar</TableCell>
-                      <TableCell className="text-right font-semibold">{pesos(fondos.total_a_pagar)}</TableCell>
-                      <TableCell />
-                    </TableRow>
+                    {totalesDe(fondos, fondos.a_pagar_a_propietarios).map((t) => (
+                      <TableRow key={t.moneda}>
+                        <TableCell>Total a pagar en {nombreDeMoneda(t.moneda)}</TableCell>
+                        <TableCell className="text-right font-semibold">{pesos(t.a_pagar, t.moneda)}</TableCell>
+                        <TableCell />
+                      </TableRow>
+                    ))}
                   </TableFooter>
                 </Table>
               )}
@@ -122,17 +148,19 @@ export function FondosDeTerceros() {
                   </TableHeader>
                   <TableBody>
                     {fondos.inquilinos_deudores.map((i) => (
-                      <TableRow key={i.tercero_id}>
+                      <TableRow key={`${i.tercero_id}-${i.moneda}`}>
                         <TableCell className="font-medium">{i.nombre}</TableCell>
-                        <TableCell className="text-right">{pesos(i.saldo)}</TableCell>
+                        <TableCell className="text-right">{pesos(i.saldo, i.moneda)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                   <TableFooter>
-                    <TableRow>
-                      <TableCell>Total adeudado</TableCell>
-                      <TableCell className="text-right font-semibold">{pesos(fondos.total_adeudado)}</TableCell>
-                    </TableRow>
+                    {totalesDe(fondos, fondos.inquilinos_deudores).map((t) => (
+                      <TableRow key={t.moneda}>
+                        <TableCell>Total adeudado en {nombreDeMoneda(t.moneda)}</TableCell>
+                        <TableCell className="text-right font-semibold">{pesos(t.adeudado, t.moneda)}</TableCell>
+                      </TableRow>
+                    ))}
                   </TableFooter>
                 </Table>
               )}

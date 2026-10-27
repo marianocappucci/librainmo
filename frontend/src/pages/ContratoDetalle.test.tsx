@@ -51,6 +51,26 @@ async function elegirCerrado(user: Usuario, dialogo: HTMLElement, campo: string,
 
 afterEach(() => vi.unstubAllGlobals())
 
+describe('Contrato — la moneda', () => {
+  it('🔴 un contrato en dólares muestra el alquiler vigente, el depósito, los precios y los conceptos fijos con «US$»', async () => {
+    const enDolares: Contrato = {
+      ...CONTRATO_VIGENTE,
+      moneda: 'USD',
+      importe_vigente: '1200.50',
+      deposito: '1200.50',
+      precios: [{ id: 2, vigencia_desde: '2026-06-01', vigencia_hasta: null, importe: '1200.50', motivo: 'manual', usuario: 'operador1' }],
+    }
+    servirContrato(enDolares)
+    montar(enDolares)
+    await screen.findByRole('heading', { name: 'C-000005' })
+
+    expect(screen.getByText('Depósito').nextSibling).toHaveTextContent('US$ 1.200,50')
+    expect(screen.getAllByText('US$ 1.200,50').length).toBeGreaterThanOrEqual(3)
+    expect(screen.getByText('Seguro').closest('tr')).toHaveTextContent('US$ 12.500,50')
+    expect(screen.queryByText(/(^|[^S])\$ \d/)).not.toBeInTheDocument()
+  })
+})
+
 describe('Contrato — las acciones según el estado', () => {
   it('🔴 borrador: activar, editar y borrar; no rescindir, finalizar ni actualizar el precio', async () => {
     servirContrato(CONTRATO_BORRADOR)

@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { LiquidacionDetalle } from './LiquidacionDetalle'
-import { LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_PAGADA } from '@/test/datos'
+import { LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Liquidacion } from '@/lib/api'
 
@@ -23,6 +23,25 @@ const servirLiquidacion = (liq: Liquidacion) => servidor({ [`GET /api/liquidacio
 const boton = (nombre: string | RegExp) => screen.queryByRole('button', { name: nombre })
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Liquidación — la moneda', () => {
+  it('🔴 una liquidación en dólares dice su moneda y muestra totales y movimientos con «US$»; el diálogo de pago también', async () => {
+    const user = userEvent.setup()
+    servirLiquidacion(LIQUIDACION_EN_DOLARES)
+    montar(LIQUIDACION_EN_DOLARES)
+    await screen.findByRole('heading', { name: 'L-000004' })
+
+    expect(screen.getByText('Moneda').nextSibling).toHaveTextContent('Dólares (USD)')
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('US$ 205.500,00')
+    expect(screen.getByText('Gastos').nextSibling).toHaveTextContent('-US$ 51.000,00')
+    const cobro = screen.getByText(/Alquiler noviembre 2026 C-000005/).closest('tr')!
+    expect(cobro).toHaveTextContent('US$ 270.000,00')
+    expect(cobro).toHaveTextContent('US$ 13.500,00')
+
+    await user.click(screen.getByRole('button', { name: 'Registrar el pago' }))
+    expect(await screen.findByText(/el neto de US\$ 205\.500,00/)).toBeInTheDocument()
+  })
+})
 
 describe('Liquidación — las acciones según el estado', () => {
   it('🔴 emitida: registrar el pago, anular y abrir el PDF', async () => {

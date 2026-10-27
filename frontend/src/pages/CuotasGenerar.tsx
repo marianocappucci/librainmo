@@ -14,6 +14,11 @@
  *
  * 🔴 Los importes no pasan por `number`: las expensas se escriben como una persona (`18.500,50`) y viajan como texto decimal; el total
  * de cada cuota se suma en centavos enteros.
+ *
+ * 🔑 **Cada cuota va en la moneda de su contrato** (`$` o `US$`) y el total de la pantalla es **uno por moneda**: nunca se suman pesos con
+ * dólares. Si un ajuste cae a mitad de mes, el alquiler viene partido en `tramos` (uno por precio) y se muestran todos. Los conceptos que
+ * paga el propietario no son parte de la cuota: se cargan solos como gasto (`gastos_del_propietario`), o quedan para cargarlos a mano
+ * cuando llega el importe (`a_cargar_como_gasto`, con enlace a `/gastos`).
  */
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -29,6 +34,7 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cuotas, mensajeDeError } from '@/lib/api'
 import type { Cuota, PrevisualizacionDeCuotas, PropuestaDeCuota } from '@/lib/api'
+import { nombreDeMoneda } from '@/lib/dominio'
 import { fecha, hoyISO, mesDe, nombreDelMes, primerDiaDelMes } from '@/lib/fechas'
 import { deCentesimas, importePositivo, pesos, sumarEnCentavos } from '@/lib/importes'
 
@@ -46,6 +52,28 @@ function totalDeLaPropuesta(p: PropuestaDeCuota, variables: Record<number, strin
   return total === null ? null : deCentesimas(total)
 }
 
+/** Los totales de las cuotas tildadas, uno por moneda (en el orden en que aparecen). `null` si alguna expensa está mal escrita. */
+function totalesPorMoneda(propuestas: PropuestaDeCuota[], totales: (string | null)[]): { moneda: string; total: string }[] | null {
+  const monedas: string[] = []
+  for (const p of propuestas) if (!monedas.includes(p.moneda)) monedas.push(p.moneda)
+  const salida: { moneda: string; total: string }[] = []
+  for (const moneda of monedas) {
+    const delaMoneda = totales.filter((_, i) => propuestas[i].moneda === moneda)
+    const suma = sumarEnCentavos(delaMoneda as string[])
+    if (delaMoneda.some((t) => t === null) || suma === null) return null
+    salida.push({ moneda, total: deCentesimas(suma) })
+  }
+  return salida
+}
+
+/** `$ 1.000,00` o `$ 1.000,00 y US$ 500,00`: los totales por moneda en una frase. */
+function enFrase(totales: { moneda: string; total: string }[]): string {
+  return totales.map((t) => pesos(t.total, t.moneda)).join(' y ')
+}
+
+/** Lo que paga el propietario de las cuotas a generar, con el número de cada contrato. */
+type DelPropietario = { numero: string; descripcion: string; moneda: string; importe: string | null }
+
 export function CuotasGenerar() {
   const [mes, setMes] = useState(mesDe(hoyISO()))
   const [vista, setVista] = useState<PrevisualizacionDeCuotas | null>(null)
@@ -55,6 +83,8 @@ export function CuotasGenerar() {
   const [generando, setGenerando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const [generadas, setGeneradas] = useState<Cuota[] | null>(null)
+  /** Lo que quedó para cargar como gasto a mano: se guarda al generar, porque la previsualización se descarta. */
+  const [paraCargar, setParaCargar] = useState<DelPropietario[]>([])
   const [error, setError] = useState<string | null>(null)
 
   function cambiarMes(nuevo: string) {
@@ -69,6 +99,7 @@ export function CuotasGenerar() {
     setCargando(true)
     setError(null)
     setGeneradas(null)
+    setParaCargar([])
     try {
       const v = await cuotas.previsualizar({ ancla: primerDiaDelMes(mes) })
       setVista(v)
@@ -86,7 +117,13 @@ export function CuotasGenerar() {
   const aGenerar = propuestas.filter((p) => elegidos.has(p.contrato_id))
   const totales = aGenerar.map((p) => totalDeLaPropuesta(p, variables))
   const hayErrorEnExpensas = totales.some((t) => t === null)
-  const totalGeneral = hayErrorEnExpensas ? null : sumarEnCentavos(totales as string[])
+  const totalesGenerales = hayErrorEnExpensas ? null : totalesPorMoneda(aGenerar, totales)
+  const gastosDelPropietario: DelPropietario[] = aGenerar.flatMap((p) =>
+    p.gastos_del_propietario.map((g) => ({ numero: p.numero, descripcion: g.descripcion, moneda: p.moneda, importe: g.importe })),
+  )
+  const aCargarComoGasto: DelPropietario[] = aGenerar.flatMap((p) =>
+    p.a_cargar_como_gasto.map((g) => ({ numero: p.numero, descripcion: g.descripcion, moneda: p.moneda, importe: null })),
+  )
 
   async function generar() {
     if (!vista || aGenerar.length === 0 || hayErrorEnExpensas) return
@@ -107,6 +144,7 @@ export function CuotasGenerar() {
         variables: importes,
       })
       setGeneradas(r.generadas)
+      setParaCargar(aCargarComoGasto)
       setVista(null)
     } catch (e) {
       setError(mensajeDeError(e))
@@ -163,11 +201,32 @@ export function CuotasGenerar() {
                   <Link to={`/cuotas/${c.id}`} className="underline underline-offset-4">
                     {c.numero_contrato}
                   </Link>{' '}
-                  · {c.inquilino_nombre} · {pesos(c.total)}
+                  · {c.inquilino_nombre} · {pesos(c.total, c.moneda)}
+                  {c.gastos_del_propietario.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      · cargó {c.gastos_del_propietario.length === 1 ? '1 gasto' : `${c.gastos_del_propietario.length} gastos`} por cuenta del propietario
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
             <p className="text-muted-foreground">Las expensas que faltaban se cargan después, desde la ficha de cada cuota («Cargar un cargo»).</p>
+            {paraCargar.length > 0 && (
+              <div className="space-y-1">
+                <p className="font-medium">Para cargar como gasto cuando llegue el importe</p>
+                <ul className="space-y-1">
+                  {paraCargar.map((g) => (
+                    <li key={`${g.numero}-${g.descripcion}`}>
+                      {g.numero} · {g.descripcion} ({nombreDeMoneda(g.moneda)})
+                    </li>
+                  ))}
+                </ul>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/gastos">Ir a los gastos</Link>
+                </Button>
+              </div>
+            )}
             <Button asChild variant="outline" size="sm">
               <Link to="/cuotas">Ver el listado de cuotas</Link>
             </Button>
@@ -229,7 +288,17 @@ export function CuotasGenerar() {
                               <span className="text-muted-foreground"> · vence {fecha(p.fecha_vencimiento)}</span>
                             </TableCell>
                             <TableCell className="text-right">
-                              {pesos(p.alquiler)}
+                              {pesos(p.alquiler, p.moneda)}
+                              {p.tramos.length > 1 && (
+                                <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground" aria-label={`Tramos del alquiler de ${p.numero}`}>
+                                  {p.tramos.map((t) => (
+                                    <li key={t.precio_id}>
+                                      del {fecha(t.desde)} al {fecha(t.hasta)} ({t.dias} {t.dias === 1 ? 'día' : 'días'}
+                                      {t.ajuste ? ', con el ajuste' : ''}): {pesos(t.importe, p.moneda)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                               {p.prorrateada && (
                                 <div className="text-xs text-muted-foreground">
                                   prorrateo: {p.dias_cubiertos} de {p.dias_del_periodo} días
@@ -240,7 +309,7 @@ export function CuotasGenerar() {
                               {p.conceptos.map((c) => (
                                 <div key={c.concepto_id} className="flex justify-between gap-3">
                                   <span>{c.descripcion}</span>
-                                  <span>{pesos(c.importe)}</span>
+                                  <span>{pesos(c.importe, p.moneda)}</span>
                                 </div>
                               ))}
                               {p.variables.map((v) => {
@@ -268,7 +337,7 @@ export function CuotasGenerar() {
                               )}
                               {p.conceptos.length === 0 && p.variables.length === 0 && <span className="text-muted-foreground">—</span>}
                             </TableCell>
-                            <TableCell className="text-right font-medium">{total === null ? '—' : pesos(total)}</TableCell>
+                            <TableCell className="text-right font-medium">{total === null ? '—' : pesos(total, p.moneda)}</TableCell>
                           </TableRow>
                         )
                       })}
@@ -285,7 +354,7 @@ export function CuotasGenerar() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-muted-foreground">
                     {aGenerar.length} de {propuestas.length} {propuestas.length === 1 ? 'cuota' : 'cuotas'} tildadas
-                    {totalGeneral !== null && <> · total {pesos(deCentesimas(totalGeneral))}</>}
+                    {totalesGenerales !== null && totalesGenerales.length > 0 && <> · total {enFrase(totalesGenerales)}</>}
                   </p>
                   <Button disabled={aGenerar.length === 0 || hayErrorEnExpensas || generando} onClick={() => setConfirmando(true)}>
                     {generando ? 'Generando…' : 'Generar cuotas'}
@@ -294,6 +363,50 @@ export function CuotasGenerar() {
               )}
             </CardContent>
           </Card>
+
+          {(gastosDelPropietario.length > 0 || aCargarComoGasto.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Lo que paga el propietario</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {gastosDelPropietario.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="font-medium">Gastos del propietario que se cargan</p>
+                    <p className="text-muted-foreground">
+                      Al generar se cargan solos como gasto por su cuenta y se descuentan en su liquidación. No suman a la cuota del inquilino.
+                    </p>
+                    <ul className="space-y-1">
+                      {gastosDelPropietario.map((g) => (
+                        <li key={`${g.numero}-${g.descripcion}`}>
+                          {g.numero} · {g.descripcion}: {pesos(g.importe, g.moneda)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aCargarComoGasto.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="font-medium">Para cargar como gasto cuando llegue el importe</p>
+                    <p className="text-muted-foreground">
+                      No tienen importe fijo: no se cargan solos. Cuando llegue el monto, cargalo en{' '}
+                      <Link to="/gastos" className="underline underline-offset-4">
+                        Gastos
+                      </Link>
+                      .
+                    </p>
+                    <ul className="space-y-1">
+                      {aCargarComoGasto.map((g) => (
+                        <li key={`${g.numero}-${g.descripcion}`}>
+                          {g.numero} · {g.descripcion}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {vista.ya_generadas.length > 0 && (
             <Card>
@@ -342,7 +455,7 @@ export function CuotasGenerar() {
         open={confirmando}
         onOpenChange={setConfirmando}
         title={`¿Generar ${aGenerar.length === 1 ? '1 cuota' : `${aGenerar.length} cuotas`} de ${nombreDelMes(primerDiaDelMes(mes))}?`}
-        description={`${totalGeneral !== null ? `Suman ${pesos(deCentesimas(totalGeneral))}. ` : ''}Cada cuota es un cargo en la cuenta del inquilino. Si te equivocás, una cuota pendiente se puede anular y volver a generar.`}
+        description={`${totalesGenerales !== null && totalesGenerales.length > 0 ? `Suman ${enFrase(totalesGenerales)}. ` : ''}Cada cuota es un cargo en la cuenta del inquilino. Si te equivocás, una cuota pendiente se puede anular y volver a generar.`}
         confirmLabel="Generar cuotas"
         onConfirm={() => {
           setConfirmando(false)

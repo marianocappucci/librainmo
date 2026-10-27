@@ -85,15 +85,15 @@ export function Liquidaciones() {
         size: 130,
         cell: ({ row }) => fecha(row.original.hasta),
       },
-      { id: 'cobrado', header: 'Cobrado', size: 150, cell: ({ row }) => pesos(row.original.cobrado) },
-      { id: 'comision', header: 'Comisión', size: 140, cell: ({ row }) => pesos(row.original.comision) },
+      { id: 'cobrado', header: 'Cobrado', size: 150, cell: ({ row }) => pesos(row.original.cobrado, row.original.moneda) },
+      { id: 'comision', header: 'Comisión', size: 140, cell: ({ row }) => pesos(row.original.comision, row.original.moneda) },
       {
         id: 'neto',
         // La clave de orden es el texto con ceros a la izquierda: se ordena sin pasar el importe por `number`.
         accessorFn: (l) => l.neto.padStart(20, '0'),
         header: sortableHeader('Neto'),
         size: 150,
-        cell: ({ row }) => <span className="font-medium">{pesos(row.original.neto)}</span>,
+        cell: ({ row }) => <span className="font-medium">{pesos(row.original.neto, row.original.moneda)}</span>,
       },
       {
         accessorKey: 'estado',

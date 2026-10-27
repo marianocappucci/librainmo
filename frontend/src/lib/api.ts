@@ -379,6 +379,8 @@ export interface LineaDeCuota {
 
 export interface Cuota {
   id: number
+  /** La moneda del contrato (`ARS` | `USD`): todos los importes de la cuota vienen en ella. */
+  moneda: string
   contrato_id: number
   numero_contrato: string
   inquilino_id: number
@@ -392,13 +394,36 @@ export interface Cuota {
   dias_del_periodo: number
   total: string
   estado: string
+  /** Lo que paga el propietario por cuenta de esta cuota, ya cargado como gasto. Una cuota sin ninguno lo trae vacío. */
+  gastos_del_propietario: GastoDeLaCuota[]
   lineas: LineaDeCuota[]
+}
+
+/** Un gasto por cuenta del propietario nacido de una cuota: se anula con ella, no suelto. */
+export interface GastoDeLaCuota {
+  id: number
+  descripcion: string
+  importe: string
+  anulado: boolean
+}
+
+/** Un tramo de precio dentro del mes: un ajuste a mitad de mes parte la cuota en dos o más. */
+export interface TramoDeCuota {
+  precio_id: number
+  desde: string
+  hasta: string
+  dias: number
+  importe: string
+  /** `true` si es el tramo que ya lleva el precio ajustado. */
+  ajuste: boolean
 }
 
 export interface PropuestaDeCuota {
   contrato_id: number
   numero: string
   bloqueada: null
+  /** La moneda del contrato: los importes de la propuesta vienen en ella. */
+  moneda: string
   precio_id: number
   periodo_desde: string
   periodo_hasta: string
@@ -407,11 +432,18 @@ export interface PropuestaDeCuota {
   prorrateada: boolean
   dias_cubiertos: number
   dias_del_periodo: number
+  /** El alquiler del mes: la suma de los `tramos`. */
   alquiler: string
+  /** Un tramo por precio. Con uno solo no hay ajuste a mitad de mes; con más de uno la cuota lleva una línea de alquiler por tramo. */
+  tramos: TramoDeCuota[]
   /** Los conceptos fijos que paga el inquilino, con su importe. */
   conceptos: { concepto_id: number; descripcion: string; importe: string }[]
   /** Los variables (las expensas): sin importe hasta que se carga el del mes. */
   variables: { concepto_id: number; descripcion: string }[]
+  /** Los conceptos fijos que paga el propietario: al generar se cargan solos como gasto por su cuenta. */
+  gastos_del_propietario: { concepto_id: number; descripcion: string; importe: string }[]
+  /** Los que paga el propietario y no tienen importe: se cargan como gasto cuando llega el monto. */
+  a_cargar_como_gasto: { concepto_id: number; descripcion: string }[]
 }
 
 export interface PrevisualizacionDeCuotas {
@@ -483,6 +515,8 @@ export interface ImputacionDeCobro {
 
 export interface Cobro {
   id: number
+  /** La moneda del contrato de la cuota. */
+  moneda: string
   cuota_id: number
   periodo_desde: string
   contrato_id: number
@@ -533,9 +567,13 @@ export interface Gasto {
   categoria: string
   descripcion: string
   importe: string
+  moneda: string
   comprobante: string | null
   anulado: boolean
   usuario: string
+  /** La cuota de la que nació (un concepto que paga el propietario): si no es `null`, se anula con la cuota y no suelto. */
+  cuota_id: number | null
+  concepto_id: number | null
   imputaciones: { propietario_id: number; propietario_nombre: string | null; importe: string }[]
 }
 
@@ -545,6 +583,8 @@ export interface GastoEntrada {
   categoria: string
   descripcion: string
   importe: string
+  /** `ARS` | `USD`; si falta, la API usa pesos. */
+  moneda?: string
   comprobante: string | null
 }
 
@@ -581,6 +621,10 @@ export interface PrevisualizacionDeLiquidacion extends TotalesDeLiquidacion {
   propietario_id: number
   propietario_nombre: string | null
   hasta: string
+  /** La moneda de esta liquidación: entran sólo los movimientos en ella. */
+  moneda: string
+  /** En qué monedas tiene el propietario movimientos sin liquidar (puede incluir la que no se está mirando). */
+  monedas_con_pendientes: string[]
   items: ItemDeLiquidacion[]
 }
 
@@ -592,6 +636,7 @@ export interface Liquidacion extends TotalesDeLiquidacion {
   propietario_nombre: string | null
   fecha: string
   hasta: string
+  moneda: string
   estado: string
   fecha_pago: string | null
   medio_pago: string | null
@@ -601,22 +646,29 @@ export interface Liquidacion extends TotalesDeLiquidacion {
   items: ItemDeLiquidacion[]
 }
 
+export interface SaldoDeTercero {
+  tercero_id: number
+  nombre: string | null
+  saldo: string
+  moneda: string
+}
+
 export interface FondosDeTerceros {
-  a_pagar_a_propietarios: { tercero_id: number; nombre: string | null; saldo: string }[]
-  total_a_pagar: string
-  inquilinos_deudores: { tercero_id: number; nombre: string | null; saldo: string }[]
-  total_adeudado: string
+  a_pagar_a_propietarios: SaldoDeTercero[]
+  inquilinos_deudores: SaldoDeTercero[]
+  /** Un total por moneda con movimientos (si no hay ninguno, uno en pesos): nunca se suman monedas distintas. */
+  totales: { moneda: string; a_pagar: string; adeudado: string }[]
 }
 
 export const urlDelPdfDeLiquidacion = (id: number) => `/api/liquidaciones/${id}/pdf`
 
 export const liquidaciones = {
-  previsualizar: (propietario_id: number, hasta: string) =>
-    api.get<PrevisualizacionDeLiquidacion>(`/api/liquidaciones/previsualizar${consulta({ propietario_id, hasta })}`),
-  listar: (f: { propietario_id?: number; estado?: string; limit?: number; offset?: number } = {}) =>
+  previsualizar: (propietario_id: number, hasta: string, moneda?: string) =>
+    api.get<PrevisualizacionDeLiquidacion>(`/api/liquidaciones/previsualizar${consulta({ propietario_id, hasta, moneda })}`),
+  listar: (f: { propietario_id?: number; estado?: string; moneda?: string; limit?: number; offset?: number } = {}) =>
     api.get<Liquidacion[]>(`/api/liquidaciones${consulta({ limit: LIMITE_DE_PAGINA_GRANDE, ...f })}`),
   obtener: (id: number | string) => api.get<Liquidacion>(`/api/liquidaciones/${id}`),
-  emitir: (datos: { propietario_id: number; fecha: string; hasta: string; observaciones: string | null }) =>
+  emitir: (datos: { propietario_id: number; fecha: string; hasta: string; moneda: string; observaciones: string | null }) =>
     api.post<Liquidacion>('/api/liquidaciones', datos),
   pagar: (id: number, datos: { fecha: string; medio_pago: string; referencia: string | null }) =>
     api.post<Liquidacion>(`/api/liquidaciones/${id}/pagar`, datos),

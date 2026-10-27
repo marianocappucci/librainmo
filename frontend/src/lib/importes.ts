@@ -34,13 +34,18 @@ export function numeroArgentino(texto: string | null | undefined, decimales = 2)
   return `${signo}${conMiles(entero.replace(/^0+(?=\d)/, ''))}${resto ? `,${resto}` : ''}`
 }
 
+/** El símbolo de la moneda como lo imprime el motor en recibos y PDF: `$` para pesos, `US$` para dólares. */
+export function simboloDeMoneda(moneda: string): string {
+  return moneda === 'USD' ? 'US$' : '$'
+}
+
 /** `$ 450.000,00`; en dólares, `US$ 1.200,00`. Vacío si no hay importe. */
 export function pesos(texto: string | null | undefined, moneda = 'ARS'): string {
   const n = numeroArgentino(texto, 2)
   if (n === '') return ''
   // Un importe negativo (un gasto que se descuenta) lleva el signo antes del símbolo: `-$ 1.200,00`.
   const [signo, valor] = n.startsWith('-') ? ['-', n.slice(1)] : ['', n]
-  return `${signo}${moneda === 'USD' ? 'US$' : '$'}${NBSP}${valor}`
+  return `${signo}${simboloDeMoneda(moneda)}${NBSP}${valor}`
 }
 
 /** ¿Es un decimal negativo (`"-1200.00"`)? Los importes de plata no lo son salvo lo que se descuenta en una liquidación. */

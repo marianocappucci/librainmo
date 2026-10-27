@@ -50,6 +50,7 @@ from app.roles import ROLES, TODOS
 from app.routers import auth as auth_router
 from app.routers import cobros, contratos, cuotas, liquidaciones, propiedades, salud
 from app.routers import usuarios as usuarios_router
+from app.servicios import clientes as servicio_clientes
 from app.validacion import errores_en_espanol
 
 #: Qué entra al log de actividad: `{clase del modelo: nombre legible}`.
@@ -184,7 +185,14 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # La administración de alquileres: cada router declara `exigir_modulo("alquileres")` y sus roles.
     # Los clientes (inquilinos, propietarios, garantes) son los del motor, con su router: es el que usa
     # `SelectCliente` de libra-ui para elegir y dar de alta en el lugar.
-    app.include_router(build_clientes_router(),
+    #
+    # `impide_desactivar`: la baja de un inquilino con contrato abierto, de un garante o de un titular dejaría al
+    # dominio apuntando a un cliente inactivo. El motor no ve esas tablas; el producto le dice por qué no.
+    def _impide_desactivar(cliente_id: int) -> str | None:
+        with sesiones() as sesion:
+            return servicio_clientes.impide_desactivar(sesion, cliente_id)
+
+    app.include_router(build_clientes_router(impide_desactivar=_impide_desactivar),
                        dependencies=[*exigir_modulo("alquileres"), Depends(require_rol(*ROLES))])
     app.include_router(propiedades.router)
     app.include_router(contratos.router)

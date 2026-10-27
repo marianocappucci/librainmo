@@ -12,6 +12,7 @@ class GastoEntrada(BaseModel):
     categoria: str
     descripcion: str = Field(min_length=1, max_length=200)
     importe: Decimal = Field(gt=0, decimal_places=2)
+    moneda: str = "ARS"
     comprobante: str | None = Field(default=None, max_length=80)
 
 
@@ -23,6 +24,7 @@ class LiquidacionEntrada(BaseModel):
     propietario_id: int
     fecha: date
     hasta: date
+    moneda: str = "ARS"
     observaciones: str | None = None
 
 

@@ -12,7 +12,8 @@
    lo dice (`punitorio_para`); si no, es de la inmobiliaria y no pasa por la cuenta de nadie.
 4. **El reparto cierra al centavo**: cada parte se redondea HALF_UP y el último titular se lleva la diferencia.
 5. **El recibo es del motor** (`libracore.recibos.emitir_recibo_de_asiento`, ADR-087), «por cuenta y orden de» los
-   titulares, en la misma transacción que los asientos.
+   titulares, en la misma transacción que los asientos. Todo va **en la moneda del contrato** (ADR-088 del motor): un
+   alquiler en dólares se cobra, se imputa y se recibe en dólares.
 6. **Anular un cobro** contraasienta todo, anula el recibo y deja la cuota otra vez pendiente, en una sola transacción
    (`anular_recibo(conn=)`, libracore v1.197.1).
 """
@@ -85,7 +86,7 @@ def proponer(sesion: Session, cuota_id: int, *, fecha: date) -> dict:
     return {"cuota_id": q.id, "fecha": fecha, "importe_cuota": texto(q.total), "punitorio": texto(p["punitorio"]),
             "dias_de_atraso": p["dias_de_atraso"], "vencimiento": q.fecha_vencimiento,
             "vencimiento_efectivo": p["detalle"]["vencimiento_efectivo"] if p["detalle"] else q.fecha_vencimiento,
-            "total": texto(q.total + p["punitorio"]), "punitorio_para": c.punitorio_para}
+            "total": texto(q.total + p["punitorio"]), "punitorio_para": c.punitorio_para, "moneda": c.moneda}
 
 
 def _validar_medios(medios: list[dict], total: Decimal) -> list[dict]:
@@ -125,9 +126,10 @@ def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], c
     asiento_punitorio = None
     if cobrado > 0:
         asiento_punitorio = cuentas.asentar(sesion, fecha=fecha, tercero_id=c.inquilino_id, rol=cuentas.INQUILINO,
-                                            concepto=f"Punitorio cuota {mes} {c.numero}", debe=cobrado)
+                                            concepto=f"Punitorio cuota {mes} {c.numero}", debe=cobrado,
+                                            moneda=c.moneda)
     asiento = cuentas.asentar(sesion, fecha=fecha, tercero_id=c.inquilino_id, rol=cuentas.INQUILINO,
-                              concepto=f"Cobro cuota {mes} {c.numero}", haber=total)
+                              concepto=f"Cobro cuota {mes} {c.numero}", haber=total, moneda=c.moneda)
 
     cobro = Cobro(cuota_id=q.id, fecha=fecha, importe_cuota=q.total, punitorio=cobrado,
                   punitorio_condonado=calculado["punitorio"] - cobrado, dias_de_atraso=calculado["dias_de_atraso"],
@@ -145,7 +147,8 @@ def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], c
             if parte <= 0:
                 continue
             a = cuentas.asentar(sesion, fecha=fecha, tercero_id=propietario_id, rol=cuentas.PROPIETARIO,
-                                concepto=f"{tipo.capitalize()} cobrado {mes} {c.numero}", haber=parte)
+                                concepto=f"{tipo.capitalize()} cobrado {mes} {c.numero}", haber=parte,
+                                moneda=c.moneda)
             cobro.imputaciones.append(CobroImputacion(propietario_id=propietario_id, tipo=tipo, importe=parte,
                                                       asiento_id=a))
 
@@ -173,7 +176,7 @@ def a_dict(sesion: Session, cobro: Cobro) -> dict:
         "numero_contrato": c.numero, "inquilino_id": c.inquilino_id, "inquilino_nombre": nombres.get(c.inquilino_id),
         "fecha": cobro.fecha, "importe_cuota": texto(cobro.importe_cuota), "punitorio": texto(cobro.punitorio),
         "punitorio_condonado": texto(cobro.punitorio_condonado), "dias_de_atraso": cobro.dias_de_atraso,
-        "total": texto(cobro.total), "medios": json.loads(cobro.medios), "anulado": cobro.anulado,
+        "total": texto(cobro.total), "moneda": c.moneda, "medios": json.loads(cobro.medios), "anulado": cobro.anulado,
         "motivo_anulacion": cobro.motivo_anulacion, "usuario": cobro.usuario,
         "recibo": {"id": recibo["id"], "numero": recibo["numero"], "punto_venta": recibo["punto_venta"],
                    "concepto": recibo["concepto"], "anulado": recibo["anulado"]} if recibo else None,

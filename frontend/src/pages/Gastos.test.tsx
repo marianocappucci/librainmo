@@ -1,17 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Gastos } from './Gastos'
-import { GASTO, GASTO_ANULADO, PROPIEDAD, PROPIEDAD_ALQUILADA } from '@/test/datos'
+import { GASTO, GASTO_ANULADO, GASTO_DE_CUOTA, GASTO_EN_DOLARES, PROPIEDAD, PROPIEDAD_ALQUILADA } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
 function montar() {
   return render(
     <MemoryRouter initialEntries={['/gastos']}>
-      <Gastos />
+      <Routes>
+        <Route path="/gastos" element={<Gastos />} />
+        <Route path="/cuotas/:id" element={<p>FICHA DE LA CUOTA</p>} />
+      </Routes>
     </MemoryRouter>,
   )
 }
@@ -74,6 +77,33 @@ describe('Gastos — el listado', () => {
   })
 })
 
+describe('Gastos — la moneda', () => {
+  it('🔴 cada gasto se ve en su moneda: el de dólares con «US$» (importe y reparto), el de pesos con «$»', async () => {
+    const user = userEvent.setup()
+    base([GASTO, GASTO_EN_DOLARES])
+    montar()
+
+    expect(await screen.findByText('US$ 300,00')).toBeInTheDocument()
+    expect(screen.getByText('$ 85.000,00')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Ver el reparto de Cambio del termotanque' }))
+    expect(await screen.findByText('Ana Inventada: US$ 51.000,00')).toBeInTheDocument()
+  })
+
+  it('🔴 un gasto de una cuota no se anula suelto: sin botón de anular, con el enlace a la cuota que lo explica', async () => {
+    const user = userEvent.setup()
+    base([GASTO, GASTO_DE_CUOTA])
+    montar()
+    await screen.findByText('Seguro')
+
+    expect(screen.queryByRole('button', { name: 'Anular gasto Seguro' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Anular gasto Cambio de la bomba de agua' })).toBeInTheDocument()
+    const celda = screen.getByText('Seguro').closest('tr') as HTMLElement
+    expect(celda).toHaveTextContent('Se anula con ella.')
+    await user.click(within(celda).getByRole('link', { name: 'ver la cuota' }))
+    expect(await screen.findByText('FICHA DE LA CUOTA')).toBeInTheDocument()
+  })
+})
+
 describe('Gastos — el alta', () => {
   it('🔴 manda el gasto con el importe como texto decimal, la propiedad elegida de la API y lo vacío como `null`; después recarga el listado', async () => {
     const user = userEvent.setup()
@@ -97,10 +127,32 @@ describe('Gastos — el alta', () => {
       categoria: 'reparacion',
       descripcion: 'Cambio de la bomba de agua',
       importe: '85000.00',
+      moneda: 'ARS',
       comprobante: null,
     })
     await waitFor(() => expect(api.de('GET', '/api/gastos').length).toBeGreaterThan(1))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('🔴 el alta ofrece la moneda (pesos por omisión) y manda la elegida', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('POST /api/gastos', json(GASTO_EN_DOLARES, 201))
+    montar()
+    await screen.findByText('Cambio de la bomba de agua')
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo gasto' }))
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByRole('combobox', { name: 'Moneda' })).toHaveTextContent('Pesos (ARS)')
+    await elegirEnBuscable(user, within(dialogo).getByRole('combobox', { name: 'Propiedad' }), /P-000001/)
+    await user.click(within(dialogo).getByRole('combobox', { name: 'Moneda' }))
+    await user.click(await screen.findByRole('option', { name: 'Dólares (USD)' }))
+    await user.type(within(dialogo).getByLabelText('Descripción'), 'Cambio del termotanque')
+    await user.type(within(dialogo).getByLabelText('Importe'), '300')
+    await user.click(within(dialogo).getByRole('button', { name: 'Registrar el gasto' }))
+
+    await waitFor(() => expect(api.de('POST', '/api/gastos')).toHaveLength(1))
+    expect(api.de('POST', '/api/gastos')[0].cuerpo).toMatchObject({ importe: '300.00', moneda: 'USD' })
   })
 
   it('ofrece las seis categorías y exige propiedad, descripción e importe', async () => {

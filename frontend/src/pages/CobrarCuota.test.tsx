@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CobrarCuota } from './CobrarCuota'
-import { COBRO, COBRO_CON_PUNITORIO, COBRO_EN_TERMINO, CUOTA_PENDIENTE } from '@/test/datos'
+import { COBRO, COBRO_CON_PUNITORIO, COBRO_EN_DOLARES, COBRO_EN_TERMINO, CUOTA_EN_DOLARES, CUOTA_PENDIENTE } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import { hoyISO } from '@/lib/fechas'
 
@@ -51,6 +51,26 @@ async function escribirMonto(user: Usuario, n: number, valor: string) {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Cobrar una cuota — la moneda', () => {
+  it('🔴 la propuesta de cobro no trae la moneda: sale de la cuota, y la cuota en dólares se cobra con «US$» (cuota, punitorio, total, diferencia y confirmación)', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/cuotas/30', json({ ...CUOTA_EN_DOLARES, id: 30 }))
+    api.responder('POST /api/cuotas/30/cobrar', json(COBRO_EN_DOLARES, 201))
+    montar()
+    await conFecha('2026-11-14')
+
+    expect(screen.getByText('Cuota').nextSibling).toHaveTextContent('US$ 462.500,50')
+    expect(screen.getByText('Total a cobrar').nextSibling).toHaveTextContent('US$ 471.750,51')
+    await escribirMonto(user, 1, '1000')
+    expect(screen.getByText(/Falta cobrar US\$ 470\.750,51\./)).toBeInTheDocument()
+    await escribirMonto(user, 1, '471.750,51')
+    await user.click(registrar())
+
+    expect(await screen.findByText('Cobro de US$ 471.750,51 el 14-11-2026')).toBeInTheDocument()
+  })
+})
 
 describe('Cobrar una cuota — cuánto se cobra', () => {
   it('arranca con la fecha de hoy y le pide al servidor el cobro de ese día', async () => {

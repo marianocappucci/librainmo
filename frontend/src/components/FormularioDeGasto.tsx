@@ -14,7 +14,7 @@ import { CampoBuscable, CampoCerrado, CampoDeTexto } from '@/components/campos'
 import { DialogoDeFormulario } from '@/components/DialogoDeFormulario'
 import { gastos, mensajeDeError } from '@/lib/api'
 import type { Gasto, Propiedad } from '@/lib/api'
-import { CATEGORIAS_DE_GASTO, direccionCompleta } from '@/lib/dominio'
+import { CATEGORIAS_DE_GASTO, MONEDAS, direccionCompleta } from '@/lib/dominio'
 import { hoyISO } from '@/lib/fechas'
 import { importePositivo } from '@/lib/importes'
 
@@ -25,6 +25,7 @@ const esquema = z
     categoria: z.string().min(1, 'Elegí la categoría.'),
     descripcion: z.string().trim().min(1, 'La descripción es obligatoria.').max(200, 'Hasta 200 caracteres.'),
     importe: z.string().trim().min(1, 'El importe es obligatorio.'),
+    moneda: z.string().min(1),
     comprobante: z.string().trim().max(80, 'Hasta 80 caracteres.'),
   })
   .superRefine((v, ctx) => {
@@ -35,7 +36,7 @@ const esquema = z
 
 type Valores = z.infer<typeof esquema>
 
-const VACIO: Valores = { propiedad_id: '', fecha: '', categoria: 'reparacion', descripcion: '', importe: '', comprobante: '' }
+const VACIO: Valores = { propiedad_id: '', fecha: '', categoria: 'reparacion', descripcion: '', importe: '', moneda: 'ARS', comprobante: '' }
 
 export function FormularioDeGasto({ abierto, propiedades, onCerrar, onGuardado }: {
   abierto: boolean
@@ -68,6 +69,7 @@ export function FormularioDeGasto({ abierto, propiedades, onCerrar, onGuardado }
           categoria: v.categoria,
           descripcion: v.descripcion.trim(),
           importe: importePositivo(v.importe) ?? '',
+          moneda: v.moneda,
           comprobante: v.comprobante.trim() || null,
         }),
       )
@@ -81,7 +83,7 @@ export function FormularioDeGasto({ abierto, propiedades, onCerrar, onGuardado }
       abierto={abierto}
       onCerrar={onCerrar}
       titulo="Nuevo gasto"
-      descripcion="Lo que la inmobiliaria pagó por cuenta del propietario. Se reparte entre los titulares de la propiedad y se descuenta en su próxima liquidación."
+      descripcion="Lo que la inmobiliaria pagó por cuenta del propietario. Se reparte entre los titulares de la propiedad y se descuenta en su próxima liquidación, en la misma moneda."
       form={form}
       onEnviar={enviar}
       error={error}
@@ -93,7 +95,8 @@ export function FormularioDeGasto({ abierto, propiedades, onCerrar, onGuardado }
         <CampoCerrado control={form.control} name="categoria" etiqueta="Categoría" opciones={CATEGORIAS_DE_GASTO} />
       </div>
       <CampoDeTexto control={form.control} name="descripcion" etiqueta="Descripción" placeholder="Cambio de la bomba de agua" autoComplete="off" />
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <CampoCerrado control={form.control} name="moneda" etiqueta="Moneda" opciones={MONEDAS} />
         <CampoDeTexto control={form.control} name="importe" etiqueta="Importe" inputMode="decimal" placeholder="85.000,00" autoComplete="off" />
         <CampoDeTexto control={form.control} name="comprobante" etiqueta="Comprobante" placeholder="N° de factura o recibo" autoComplete="off" />
       </div>

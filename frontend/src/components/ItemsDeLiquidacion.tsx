@@ -5,6 +5,8 @@
  * 🔑 **La comisión es por contrato y sólo sobre el alquiler cobrado** (ADR-007, punto 3): cada fila de alquiler muestra su base y su
  * porcentaje; los conceptos, el punitorio y los gastos no llevan comisión. 🔸 Se toma con IVA incluido (a cerrar con el contador antes
  * de facturar): la pantalla no dice «+ IVA».
+ *
+ * Una liquidación es de una sola moneda (`moneda`): todos los importes se imprimen con su símbolo (`$` o `US$`).
  */
 import { TableFooter } from '@/components/ui/table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -21,18 +23,19 @@ function Cifra({ etiqueta, valor, fuerte }: { etiqueta: string; valor: string; f
   )
 }
 
-export function TotalesDeLiquidacionVista({ totales }: { totales: TotalesDeLiquidacion }) {
+export function TotalesDeLiquidacionVista({ totales, moneda }: { totales: TotalesDeLiquidacion; moneda: string }) {
+  const enMoneda = (importe: string) => pesos(importe, moneda)
   return (
     <dl className="grid gap-3 sm:grid-cols-4">
-      <Cifra etiqueta="Cobrado a su favor" valor={pesos(totales.cobrado)} />
-      <Cifra etiqueta="Gastos" valor={esNegativo(totales.gastos) || aCentesimas(totales.gastos) === 0 ? pesos(totales.gastos) : `-${pesos(totales.gastos)}`} />
-      <Cifra etiqueta="Comisión" valor={aCentesimas(totales.comision) === 0 ? pesos(totales.comision) : `-${pesos(totales.comision)}`} />
-      <Cifra etiqueta="Neto a pagar" valor={pesos(totales.neto)} fuerte />
+      <Cifra etiqueta="Cobrado a su favor" valor={enMoneda(totales.cobrado)} />
+      <Cifra etiqueta="Gastos" valor={esNegativo(totales.gastos) || aCentesimas(totales.gastos) === 0 ? enMoneda(totales.gastos) : `-${enMoneda(totales.gastos)}`} />
+      <Cifra etiqueta="Comisión" valor={aCentesimas(totales.comision) === 0 ? enMoneda(totales.comision) : `-${enMoneda(totales.comision)}`} />
+      <Cifra etiqueta="Neto a pagar" valor={enMoneda(totales.neto)} fuerte />
     </dl>
   )
 }
 
-export function ItemsDeLiquidacion({ items }: { items: ItemDeLiquidacion[] }) {
+export function ItemsDeLiquidacion({ items, moneda }: { items: ItemDeLiquidacion[]; moneda: string }) {
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -50,18 +53,18 @@ export function ItemsDeLiquidacion({ items }: { items: ItemDeLiquidacion[] }) {
             <TableRow key={i.asiento_id}>
               <TableCell>{fecha(i.fecha)}</TableCell>
               <TableCell>{i.descripcion}</TableCell>
-              <TableCell className="text-right">{pesos(i.importe)}</TableCell>
+              <TableCell className="text-right">{pesos(i.importe, moneda)}</TableCell>
               <TableCell className="text-right">
                 {aCentesimas(i.base_comision) === 0 ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
                   <>
-                    {pesos(i.base_comision)}
+                    {pesos(i.base_comision, moneda)}
                     <div className="text-xs text-muted-foreground">al {porcentaje(i.comision_pct)}</div>
                   </>
                 )}
               </TableCell>
-              <TableCell className="text-right">{aCentesimas(i.comision) === 0 ? <span className="text-muted-foreground">—</span> : pesos(i.comision)}</TableCell>
+              <TableCell className="text-right">{aCentesimas(i.comision) === 0 ? <span className="text-muted-foreground">—</span> : pesos(i.comision, moneda)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

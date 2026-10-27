@@ -150,16 +150,16 @@ export function CobroDetalle() {
             </Dato>
             <Dato etiqueta="Inquilino">{cobro.inquilino_nombre}</Dato>
             <Dato etiqueta="Cargado por">{cobro.usuario}</Dato>
-            <Dato etiqueta="Importe de la cuota">{pesos(cobro.importe_cuota)}</Dato>
+            <Dato etiqueta="Importe de la cuota">{pesos(cobro.importe_cuota, cobro.moneda)}</Dato>
             <Dato etiqueta="Punitorio">
-              {pesos(cobro.punitorio)}
+              {pesos(cobro.punitorio, cobro.moneda)}
               {cobro.dias_de_atraso > 0 && (
                 <span className="text-muted-foreground"> · {cobro.dias_de_atraso} {cobro.dias_de_atraso === 1 ? 'día' : 'días'} de atraso</span>
               )}
             </Dato>
-            <Dato etiqueta="Punitorio condonado">{aCentesimas(cobro.punitorio_condonado) === 0 ? '' : pesos(cobro.punitorio_condonado)}</Dato>
+            <Dato etiqueta="Punitorio condonado">{aCentesimas(cobro.punitorio_condonado) === 0 ? '' : pesos(cobro.punitorio_condonado, cobro.moneda)}</Dato>
             <Dato etiqueta="Total cobrado">
-              <strong>{pesos(cobro.total)}</strong>
+              <strong>{pesos(cobro.total, cobro.moneda)}</strong>
             </Dato>
             <Dato etiqueta="Recibo" className="sm:col-span-2">
               {cobro.recibo ? (
@@ -195,7 +195,7 @@ export function CobroDetalle() {
                 <TableRow key={i}>
                   <TableCell>{etiquetaDe(MEDIOS_DE_COBRO, m.medio_pago)}</TableCell>
                   <TableCell>{m.referencia || '—'}</TableCell>
-                  <TableCell className="text-right">{pesos(m.monto)}</TableCell>
+                  <TableCell className="text-right">{pesos(m.monto, cobro.moneda)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -228,14 +228,14 @@ export function CobroDetalle() {
                     <TableRow key={`${p.tipo}-${i}`}>
                       <TableCell className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{i === 0 ? g.nombre : ''}</TableCell>
                       <TableCell>{etiquetaDe(TIPOS_DE_IMPUTACION, p.tipo)}</TableCell>
-                      <TableCell className="text-right">{pesos(p.importe)}</TableCell>
+                      <TableCell className="text-right">{pesos(p.importe, cobro.moneda)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow>
                     <TableCell colSpan={2} className="text-right text-muted-foreground">
                       Total de {g.nombre}
                     </TableCell>
-                    <TableCell className="text-right font-semibold">{pesos(g.subtotal)}</TableCell>
+                    <TableCell className="text-right font-semibold">{pesos(g.subtotal, cobro.moneda)}</TableCell>
                   </TableRow>
                 </TableBody>
               ))}
@@ -243,7 +243,7 @@ export function CobroDetalle() {
                 <TableRow>
                   <TableCell colSpan={2} className="text-right">Total imputado a propietarios</TableCell>
                   <TableCell className="text-right font-semibold">
-                    {pesos(deCentesimas(sumarEnCentavos(cobro.imputaciones.map((i) => i.importe)) ?? 0))}
+                    {pesos(deCentesimas(sumarEnCentavos(cobro.imputaciones.map((i) => i.importe)) ?? 0), cobro.moneda)}
                   </TableCell>
                 </TableRow>
               </TableFooter>

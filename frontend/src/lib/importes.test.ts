@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { aCentesimas, aDecimal, conSigno, deCentesimas, esNegativo, importePositivo, numeroArgentino, pesos, porcentaje, sumarEnCentavos } from './importes'
+import { aCentesimas, aDecimal, conSigno, deCentesimas, esNegativo, importePositivo, numeroArgentino, pesos, porcentaje, simboloDeMoneda, sumarEnCentavos } from './importes'
 
 describe('numeroArgentino: el texto decimal de la API, con miles y coma', () => {
   it.each([
@@ -34,6 +34,12 @@ describe('pesos y porcentaje', () => {
     expect(pesos('450000.00')).toBe('$ 450.000,00')
     expect(pesos('1200.5', 'USD')).toBe('US$ 1.200,50')
     expect(pesos(null)).toBe('')
+  })
+
+  it('el símbolo es `$` para pesos y `US$` para dólares, como lo imprime el motor; lo desconocido va como pesos', () => {
+    expect(simboloDeMoneda('ARS')).toBe('$')
+    expect(simboloDeMoneda('USD')).toBe('US$')
+    expect(simboloDeMoneda('XYZ')).toBe('$')
   })
 
   it('un importe negativo lleva el signo antes del símbolo, y el cero negativo no es negativo', () => {

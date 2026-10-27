@@ -6,10 +6,10 @@ ADENTRO de este contenedor:
 
     docker exec <contenedor> python3 -c "... from app.database import get_modulos, set_addon; ..."
 
-así que `app.database` tiene que exportar `get_modulos` y `set_addon` con esos nombres. Hoy
-LibraInmo no declara ningún add-on (`plans.ADDONS` está vacío), pero el backoffice igual lista los
-módulos: sin esto el `docker exec` muere con `ImportError` y la pantalla de la instancia queda en
-blanco. Es el mismo contrato que cumplen LibraCargo y LibraDesk.
+así que `app.database` tiene que exportar `get_modulos` y `set_addon` con esos nombres. El único
+add-on es `resguardo_externo` (la copia en la nube de la inmobiliaria), y el backoffice lo prende por acá: sin esto
+el `docker exec` muere con `ImportError` y la pantalla de la instancia queda en blanco. Es el mismo contrato que
+cumplen LibraCargo y LibraDesk.
 
 **No confundir con `app.db`**, que es el engine de SQLAlchemy del dominio. Esto habla con el
 schema de **`libracore`** por la conexión SQL cruda de `libracore.db.core`, que es la misma base

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ESTADOS_DE_CONTRATO, ESTADOS_DE_PROPIEDAD, ESTADOS_ELEGIBLES_DE_PROPIEDAD, METODOS_DE_AJUSTE, PERIODICIDADES, ROLES,
   TIPOS_DE_PROPIEDAD, CATEGORIAS_DE_GASTO, MEDIOS_DE_COBRO, MEDIOS_DE_PAGO_AL_PROPIETARIO, ESTADOS_DE_CUOTA, etiquetaDeMotivoDePrecio,
-  tonoDeEstadoDeCuota, tonoDeEstadoDeLiquidacion, direccionCompleta, etiquetaDe, etiquetaDeRol, tonoDeEstadoDeContrato, tonoDeEstadoDePropiedad,
+  tonoDeEstadoDeCuota, tonoDeEstadoDeLiquidacion, nombreDeMoneda, direccionCompleta, etiquetaDe, etiquetaDeRol, tonoDeEstadoDeContrato, tonoDeEstadoDePropiedad,
 } from './dominio'
 
 describe('roles: la matriz de app/roles.py', () => {
@@ -63,6 +63,12 @@ describe('vocabulario de cuotas, cobros y liquidaciones (app/models/)', () => {
     expect(tonoDeEstadoDeCuota('anulada')).toBe('neutro')
     expect(tonoDeEstadoDeLiquidacion('emitida')).toBe('atencion')
     expect(tonoDeEstadoDeLiquidacion('pagada')).toBe('ok')
+  })
+
+  it('la moneda en una frase: pesos o dólares (lo desconocido va como vino)', () => {
+    expect(nombreDeMoneda('ARS')).toBe('pesos')
+    expect(nombreDeMoneda('USD')).toBe('dólares')
+    expect(nombreDeMoneda('EUR')).toBe('EUR')
   })
 
   it('🔴 un inquilino no paga con «cuenta corriente» (el cobro es lo que salda la cuenta): los otros ocho medios del motor', () => {

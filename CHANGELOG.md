@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- **Los huecos que encontró la documentación** (ADR-008, revisión `0006`, `libracore` v1.199.0): contratos en dólares de punta a punta (cuota, cobro, recibo `US$`, gasto y liquidación en su moneda, fondos de terceros con un total por moneda); el ajuste que cae a mitad de mes bloquea la cuota y la prorratea por días; el concepto que paga el propietario con importe fijo se carga como gasto al generar la cuota; la baja de un inquilino, garante o titular con algo vivo se rechaza con el motivo.
 - **`POST /auth/verify`** para el login de `/docs/` de la landing (`librainmo_web`): valida credenciales sin crear sesión y sólo con el secreto compartido `DOCS_AUTH_SECRET`; sin el secreto en la instancia falla cerrado con 401.
 - **Identidad de la familia** (`libra-ui` v0.182.0, ADR-096): acento lima, la marca de casa y llave en el login, la sidebar y el favicon, y la foto del hero de fondo en el login. Se va el logo propio (`LOGO`) de `branding.ts`.
 - 🔴 **El alta y el deploy veían cero migraciones.** `nuevo_cliente.py` y `panel_admin.py` llamaban a `configure(**CONFIGURACION)`, y el motor lee las `migraciones=` del commit de la imagen con `ast`, sin importar el script: no encontraba ninguna y el alta de la demo arrancó sin migrar. Ahora los dos declaran el mismo `configure(...)` literal (se va `scripts/configuracion.py`) y el test las lee con el mismo `migraciones_declaradas` del motor.

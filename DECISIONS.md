@@ -155,3 +155,27 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
    piloto que falta.
 6. **Fondos de terceros** (`GET /api/reportes/fondos-de-terceros`): lo que se les debe a los propietarios (tiene que
    estar en la cuenta de la inmobiliaria) y lo que deben los inquilinos, desde los saldos del libro del motor.
+
+## ADR-008 — Moneda, ajuste a mitad de mes, lo que paga el propietario y la baja de un cliente
+
+**Estado:** aceptada (2026-10-27, decisiones del humano). Nace de los huecos que encontró la documentación de la
+landing al leer el código.
+
+**Decisión.**
+1. **Multimoneda completa** (ADR-088 del motor, `libracore` v1.198.0). Cada asiento del libro de terceros lleva la
+   moneda de su documento: la del contrato para la cuota, el cobro y sus imputaciones, la del gasto
+   (`gastos.moneda`), la de la liquidación (`liquidaciones.moneda`). El recibo y el PDF de la liquidación dicen `US$`.
+   **Una liquidación es de una moneda**: un propietario con contratos en pesos y en dólares recibe dos, y la
+   previsualización dice en qué monedas tiene pendientes. Fondos de terceros da un total por moneda (`totales`). No se
+   convierte nada.
+2. **Un ajuste que cae a mitad de mes prorratea por días** entre el precio viejo y el nuevo, con una línea de alquiler
+   por tramo, cada una con la cuenta del motor (`proponer_cuota`). El ajuste se busca en todo el mes (antes, sólo el
+   día 1): la cuota espera a que se aplique.
+3. **Un concepto que paga el propietario con importe fijo es un gasto por su cuenta**, cargado al generar la cuota
+   (`gastos.cuota_id`, `concepto_id`, revisión `0006`) y descontado en la liquidación; anular la cuota lo anula, y no
+   se anula suelto. Sin importe, la generación lo lista para cargarlo cuando llegue. Una propiedad sin titulares
+   completos bloquea esa cuota.
+4. **No se da de baja a quien es parte de algo vivo**: el inquilino o el garante de un contrato abierto y el titular de
+   una propiedad que no está de baja (`servicios/clientes.impide_desactivar`, el gancho `impide_desactivar` del router
+   de clientes del motor, `libracore` v1.199.0).
+

@@ -91,6 +91,76 @@ describe('Nueva liquidación — la previsualización', () => {
     expect(screen.getByRole('button', { name: 'Previsualizar' })).toBeEnabled()
   })
 
+  it('🔴 la moneda arranca en pesos, viaja en la previsualización y la vista dice en cuál es', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    montar()
+    expect(await screen.findByRole('combobox', { name: 'Moneda' })).toHaveTextContent('Pesos (ARS)')
+    await previsualizar(user)
+
+    expect(api.de('GET', '/api/liquidaciones/previsualizar')[0].query.get('moneda')).toBe('ARS')
+    expect(screen.getByText(/Ana Inventada — hasta el 15-11-2026, en pesos/)).toBeInTheDocument()
+    // Sin movimientos en la otra moneda no hay aviso.
+    expect(screen.queryByText(/también tiene movimientos sin liquidar/)).not.toBeInTheDocument()
+  })
+
+  it('🔴 si el propietario también tiene movimientos sin liquidar en dólares lo avisa y ofrece pasar a esa moneda, que se vuelve a previsualizar', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/liquidaciones/previsualizar', (p) =>
+      json(
+        p.query.get('moneda') === 'USD'
+          ? { ...PREVISUALIZACION_DE_LIQUIDACION, moneda: 'USD', monedas_con_pendientes: ['ARS', 'USD'], neto: '1500.00', cobrado: '1500.00', gastos: '0.00', comision: '0.00' }
+          : { ...PREVISUALIZACION_DE_LIQUIDACION, monedas_con_pendientes: ['ARS', 'USD'] },
+      ),
+    )
+    montar()
+    await previsualizar(user)
+
+    expect(screen.getByText('Este propietario también tiene movimientos sin liquidar en dólares.')).toBeInTheDocument()
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('$ 205.500,00')
+    await user.click(screen.getByRole('button', { name: 'Liquidar en dólares' }))
+
+    expect(await screen.findByText(/hasta el 15-11-2026, en dólares/)).toBeInTheDocument()
+    expect(api.de('GET', '/api/liquidaciones/previsualizar').at(-1)?.query.get('moneda')).toBe('USD')
+    expect(screen.getByRole('combobox', { name: 'Moneda' })).toHaveTextContent('Dólares (USD)')
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('US$ 1.500,00')
+    // Ahora el aviso es al revés: quedan pendientes en pesos.
+    expect(screen.getByText('Este propietario también tiene movimientos sin liquidar en pesos.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Liquidar en pesos' })).toBeInTheDocument()
+  })
+
+  it('🔴 elegir otra moneda descarta lo previsualizado (era de otra consulta); emitir manda la moneda previsualizada', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/liquidaciones/previsualizar', json({ ...PREVISUALIZACION_DE_LIQUIDACION, moneda: 'USD', monedas_con_pendientes: ['USD'] }))
+    montar()
+    await previsualizar(user)
+
+    await user.click(screen.getByRole('combobox', { name: 'Moneda' }))
+    await user.click(await screen.findByRole('option', { name: 'Dólares (USD)' }))
+    expect(screen.queryByRole('button', { name: 'Emitir la liquidación' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Previsualizar' }))
+    await screen.findByText(/hasta el 15-11-2026, en dólares/)
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('US$ 205.500,00')
+    await user.click(screen.getByRole('button', { name: 'Emitir la liquidación' }))
+    expect(await screen.findByText(/Neto a pagar a Ana Inventada: US\$ 205\.500,00/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Emitir liquidación' }))
+
+    await waitFor(() => expect(api.de('POST', '/api/liquidaciones')).toHaveLength(1))
+    expect(api.de('POST', '/api/liquidaciones')[0].cuerpo).toMatchObject({ propietario_id: 1, moneda: 'USD' })
+  })
+
+  it('llega con la moneda elegida cuando viene del reporte de fondos de terceros (`?moneda=USD`); una moneda desconocida se ignora', async () => {
+    base()
+    const { unmount } = montar('/liquidaciones/nueva?propietario=1&moneda=USD')
+    expect(await screen.findByRole('combobox', { name: 'Moneda' })).toHaveTextContent('Dólares (USD)')
+    unmount()
+    montar('/liquidaciones/nueva?propietario=1&moneda=EUR')
+    expect(await screen.findByRole('combobox', { name: 'Moneda' })).toHaveTextContent('Pesos (ARS)')
+  })
+
   it('«hasta» posterior a la fecha de la liquidación se avisa y no deja previsualizar', async () => {
     const user = userEvent.setup()
     const api = base()
@@ -135,7 +205,7 @@ describe('Nueva liquidación — la previsualización', () => {
     api.responder('GET /api/liquidaciones/previsualizar', json({ ...PREVISUALIZACION_DE_LIQUIDACION, items: [], cobrado: '0.00', gastos: '0.00', comision: '0.00', neto: '0.00' }))
     montar()
     await previsualizar(user)
-    expect(screen.getByText('No hay movimientos sin liquidar para este propietario hasta esa fecha.')).toBeInTheDocument()
+    expect(screen.getByText('No hay movimientos sin liquidar en pesos para este propietario hasta esa fecha.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Emitir la liquidación' })).toBeDisabled()
   })
 
@@ -181,6 +251,7 @@ describe('Nueva liquidación — emitir', () => {
       propietario_id: 1,
       fecha: '2026-11-15',
       hasta: '2026-11-15',
+      moneda: 'ARS',
       observaciones: 'Incluye el arreglo de la bomba',
     })
     expect(await screen.findByText('FICHA DE LA LIQUIDACIÓN')).toBeInTheDocument()

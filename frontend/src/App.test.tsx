@@ -26,7 +26,7 @@ function servirComo(rol: string | null, terminos: object = TERMINOS_AL_DIA) {
     'GET /api/cobros': json([]),
     'GET /api/gastos': json([]),
     'GET /api/liquidaciones': json([]),
-    'GET /api/reportes/fondos-de-terceros': json({ a_pagar_a_propietarios: [], total_a_pagar: '0.00', inquilinos_deudores: [], total_adeudado: '0.00' }),
+    'GET /api/reportes/fondos-de-terceros': json({ a_pagar_a_propietarios: [], inquilinos_deudores: [], totales: [{ moneda: 'ARS', a_pagar: '0.00', adeudado: '0.00' }] }),
     'GET /api/clientes': json([]),
     'GET /api/contratos/ajustes/indices': json([]),
   })

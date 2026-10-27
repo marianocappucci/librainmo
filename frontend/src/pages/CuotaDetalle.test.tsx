@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CuotaDetalle } from './CuotaDetalle'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import {
-  COBRO, CONCEPTOS_DEL_INQUILINO, CONTRATO_VIGENTE, CUOTA_ANULADA, CUOTA_COBRADA, CUOTA_PENDIENTE,
+  COBRO, CONCEPTOS_DEL_INQUILINO, CONTRATO_VIGENTE, CUOTA_ANULADA, CUOTA_CON_GASTOS_DEL_PROPIETARIO, CUOTA_COBRADA, CUOTA_EN_DOLARES,
+  CUOTA_PENDIENTE,
 } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Cuota } from '@/lib/api'
@@ -96,6 +97,44 @@ describe('Cuota — los datos y las líneas', () => {
     base(prorrateada)
     montar(prorrateada)
     expect(await screen.findByText('11 de 30 días')).toBeInTheDocument()
+  })
+})
+
+describe('Cuota — la moneda', () => {
+  it('🔴 los importes van en la moneda de la CUOTA: una en dólares se ve con «US$» aunque el contrato (que acá es de pesos) diga otra cosa', async () => {
+    base(CUOTA_EN_DOLARES)
+    montar(CUOTA_EN_DOLARES)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+
+    const lineas = screen.getByText('Qué incluye').closest('[data-slot="card"]') as HTMLElement
+    expect(within(lineas).getByText('Alquiler noviembre 2026').closest('tr')).toHaveTextContent('US$ 1.200,00')
+    expect(within(lineas).getByText('Total').closest('tr')).toHaveTextContent('US$ 1.200,00')
+    expect(within(lineas).queryByText(/^\$ /)).not.toBeInTheDocument()
+  })
+})
+
+describe('Cuota — los gastos del propietario', () => {
+  it('🔴 lista los gastos que se cargaron solos por cuenta del propietario, con el anulado tachado y marcado, y explica que se anulan con la cuota', async () => {
+    base(CUOTA_CON_GASTOS_DEL_PROPIETARIO)
+    montar(CUOTA_CON_GASTOS_DEL_PROPIETARIO)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+
+    const tarjeta = screen.getByText('Gastos del propietario').closest('[data-slot="card"]') as HTMLElement
+    expect(within(tarjeta).getByText('Seguro').closest('tr')).toHaveTextContent('$ 12.500,50')
+    const anulado = within(tarjeta).getByText('Seguro anterior').closest('tr') as HTMLElement
+    expect(anulado).toHaveTextContent('$ 9.000,00')
+    expect(within(anulado).getByText('Anulado')).toBeInTheDocument()
+    expect(within(anulado).getByText('Seguro anterior')).toHaveClass('line-through')
+    expect(within(tarjeta).getByText(/se anula junto con la cuota/)).toBeInTheDocument()
+    // Sólo se miran: la tarjeta no ofrece anular ningún gasto suelto.
+    expect(within(tarjeta).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('una cuota sin gastos del propietario no muestra la tarjeta', async () => {
+    base(CUOTA_PENDIENTE)
+    montar(CUOTA_PENDIENTE)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+    expect(screen.queryByText('Gastos del propietario')).not.toBeInTheDocument()
   })
 })
 

@@ -2,9 +2,14 @@
  * Los gastos por cuenta del propietario: el listado con sus filtros, el alta y la anulación (ADR-007).
  *
  * Un gasto es un cargo en la cuenta de cada titular de la propiedad (repartido por su porcentaje) y se descuenta en la próxima
- * liquidación. Anularlo contraasienta; si ya entró en una liquidación, el servidor lo rechaza (409) y el motivo se ve arriba.
+ * liquidación (de su moneda: un gasto en dólares va a la liquidación en dólares). Anularlo contraasienta; si ya entró en una liquidación,
+ * el servidor lo rechaza (409) y el motivo se ve arriba.
+ *
+ * 🔑 Un gasto que nació de una cuota (un concepto que paga el propietario, `cuota_id`) **no se anula suelto**: el servidor lo rechaza
+ * (409, «se anula con la cuota»). Esa fila no ofrece el botón y lleva el enlace a la cuota, que es de donde se anula.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Plus, XCircle } from 'lucide-react'
 import type { ColumnDef } from 'libra-ui/data-table'
 import { DataTable, sortableHeader } from 'libra-ui/data-table'
@@ -116,6 +121,15 @@ export function Gastos() {
             <div>
               {row.original.descripcion} {row.original.anulado && <Anulado />}
             </div>
+            {row.original.cuota_id !== null && (
+              <div className="text-xs text-muted-foreground">
+                De una cuota:{' '}
+                <Link to={`/cuotas/${row.original.cuota_id}`} className="underline underline-offset-4">
+                  ver la cuota
+                </Link>
+                . Se anula con ella.
+              </div>
+            )}
             {row.original.comprobante && <div className="text-xs text-muted-foreground">Comprobante {row.original.comprobante}</div>}
           </div>
         ),
@@ -126,12 +140,12 @@ export function Gastos() {
         accessorFn: (g) => g.importe.padStart(20, '0'),
         header: sortableHeader('Importe'),
         size: 140,
-        cell: ({ row }) => pesos(row.original.importe),
+        cell: ({ row }) => pesos(row.original.importe, row.original.moneda),
       },
       columnaDeAcciones<Gasto>({
         botones: 1,
         celda: (g) =>
-          g.anulado ? null : (
+          g.anulado || g.cuota_id !== null ? null : (
             <BotonDeFila titulo="Anular gasto" fila={`${g.descripcion}`} onClick={() => setAAnular(g)}>
               <XCircle className="size-4" />
             </BotonDeFila>
@@ -211,7 +225,7 @@ export function Gastos() {
               <div className="text-xs text-muted-foreground">Reparto entre los titulares de la propiedad</div>
               {g.imputaciones.map((i) => (
                 <div key={i.propietario_id}>
-                  {i.propietario_nombre}: {pesos(i.importe)}
+                  {i.propietario_nombre}: {pesos(i.importe, g.moneda)}
                 </div>
               ))}
             </div>

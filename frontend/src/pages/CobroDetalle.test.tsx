@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CobroDetalle } from './CobroDetalle'
-import { COBRO, COBRO_ANULADO } from '@/test/datos'
+import { COBRO, COBRO_ANULADO, COBRO_EN_DOLARES } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Cobro } from '@/lib/api'
 
@@ -24,6 +24,21 @@ function montar(cobro: Cobro) {
 const servirCobro = (cobro: Cobro) => servidor({ [`GET /api/cobros/${cobro.id}`]: json(cobro) })
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Cobro — la moneda', () => {
+  it('🔴 un cobro en dólares muestra con «US$» la cuota, el punitorio, el total, los medios y el reparto entre propietarios', async () => {
+    servirCobro(COBRO_EN_DOLARES)
+    montar(COBRO_EN_DOLARES)
+    await screen.findByRole('heading', { name: 'Cobro del 14-11-2026' })
+
+    const d = within(screen.getByText('Datos del cobro').closest('[data-slot="card"]') as HTMLElement)
+    expect(d.getByText('Importe de la cuota').nextSibling).toHaveTextContent('US$ 462.500,50')
+    expect(d.getByText('Total cobrado').nextSibling).toHaveTextContent('US$ 471.750,51')
+    // Ni un solo importe de la pantalla queda en pesos.
+    expect(screen.queryByText(/(^|[^S])\$ \d/)).not.toBeInTheDocument()
+    expect(screen.getByText('Ana Inventada').closest('tr')).toHaveTextContent('US$')
+  })
+})
 
 describe('Cobro — los datos', () => {
   it('muestra el cobro con fechas dd-mm-aaaa, importes en formato argentino, el punitorio con sus días de atraso y el recibo', async () => {

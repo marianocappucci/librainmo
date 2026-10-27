@@ -9,13 +9,14 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fpdf import FPDF
+from libracore import monedas
 from libracore.emisor_del_pdf import emisor_para
 
 
-def _plata(texto: str | None) -> str:
+def _plata(texto: str | None, moneda: str = "ARS") -> str:
     valor = Decimal(texto or "0")
     entero, _, dec = f"{abs(valor):,.2f}".partition(".")
-    return f"{'-' if valor < 0 else ''}$ {entero.replace(',', '.')},{dec}"
+    return f"{'-' if valor < 0 else ''}{monedas.simbolo(moneda)} {entero.replace(',', '.')},{dec}"
 
 
 def _fecha(d) -> str:
@@ -45,6 +46,8 @@ def generar(liq: dict) -> bytes:
     pdf.cell(0, 6, _latin1(f"Propietario: {liq['propietario_nombre']}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 6, _latin1(f"Fecha: {_fecha(liq['fecha'])}    Movimientos hasta el {_fecha(liq['hasta'])}"),
              new_x="LMARGIN", new_y="NEXT")
+    moneda = liq.get("moneda") or "ARS"
+    pdf.cell(0, 6, _latin1(f"Moneda: {monedas.nombre(moneda)}"), new_x="LMARGIN", new_y="NEXT")
     if liq["estado"] == "anulada":
         pdf.set_font("Helvetica", "B", 10)
         pdf.cell(0, 6, "ANULADA", new_x="LMARGIN", new_y="NEXT")
@@ -58,7 +61,7 @@ def generar(liq: dict) -> bytes:
     for x in liq["items"]:
         pdf.cell(24, 6, _fecha(x["fecha"]))
         pdf.cell(116, 6, _latin1(x["descripcion"])[:80])
-        pdf.cell(0, 6, _latin1(_plata(x["importe"])), align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _latin1(_plata(x["importe"], moneda)), align="R", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
     for etiqueta, valor, negrita in (("Cobrado", liq["cobrado"], False),
                                      ("Gastos", f"-{liq['gastos']}" if Decimal(liq["gastos"]) else "0", False),
@@ -67,7 +70,7 @@ def generar(liq: dict) -> bytes:
                                      ("Neto a cobrar", liq["neto"], True)):
         pdf.set_font("Helvetica", "B" if negrita else "", 10)
         pdf.cell(140, 7, _latin1(etiqueta), align="R")
-        pdf.cell(0, 7, _latin1(_plata(valor)), align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, _latin1(_plata(valor, moneda)), align="R", new_x="LMARGIN", new_y="NEXT")
     if liq["estado"] == "pagada":
         pdf.ln(3)
         pdf.set_font("Helvetica", "", 9)

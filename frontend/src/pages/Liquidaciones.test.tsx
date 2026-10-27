@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Liquidaciones } from './Liquidaciones'
-import { CLIENTES, LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_PAGADA } from '@/test/datos'
+import { CLIENTES, LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -25,6 +25,19 @@ function base(lista: unknown = [LIQUIDACION, LIQUIDACION_PAGADA, LIQUIDACION_ANU
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Liquidaciones — la moneda', () => {
+  it('🔴 una liquidación en dólares muestra cobrado, comisión y neto con «US$»', async () => {
+    base([LIQUIDACION, LIQUIDACION_EN_DOLARES])
+    montar()
+
+    expect(await screen.findByRole('link', { name: 'L-000004' })).toBeInTheDocument()
+    expect(screen.getByText('US$ 270.000,00')).toBeInTheDocument()
+    expect(screen.getByText('US$ 13.500,00')).toBeInTheDocument()
+    expect(screen.getByText('US$ 205.500,00')).toBeInTheDocument()
+    expect(screen.getByText('$ 205.500,00')).toBeInTheDocument()
+  })
+})
 
 describe('Liquidaciones — el listado', () => {
   it('lista número, propietario, fechas dd-mm-aaaa, cobrado, comisión, neto y estado', async () => {

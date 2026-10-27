@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Cuotas } from './Cuotas'
-import { CONTRATO, CUOTA_ANULADA, CUOTA_COBRADA, CUOTA_PENDIENTE } from '@/test/datos'
+import { CONTRATO, CUOTA_ANULADA, CUOTA_COBRADA, CUOTA_EN_DOLARES, CUOTA_PENDIENTE } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -28,6 +28,16 @@ function base(cuotas: unknown = LISTA) {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Cuotas — la moneda', () => {
+  it('🔴 cada cuota lleva la moneda de su contrato: una en dólares se ve con «US$» y las otras con «$»', async () => {
+    base([CUOTA_PENDIENTE, CUOTA_EN_DOLARES])
+    montar()
+
+    expect(await screen.findByText('US$ 1.200,00')).toBeInTheDocument()
+    expect(screen.getByText('$ 462.500,50')).toBeInTheDocument()
+  })
+})
 
 describe('Cuotas — el listado', () => {
   it('lista el mes, el contrato, el inquilino, el vencimiento dd-mm-aaaa, el total en formato argentino y el estado', async () => {

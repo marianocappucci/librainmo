@@ -3,7 +3,10 @@
  *
  * Pendiente: «Cobrar», «Cargar un cargo» (las expensas que llegaron después de generarla) y «Anular» con motivo. Cobrada o anulada: sólo se
  * mira, y una cobrada enlaza al cobro. El total es lo que quedó cargado en la cuenta del inquilino; el servidor lo corrige al cargar un
- * cargo y lo contraasienta al anular.
+ * cargo y lo contraasienta al anular. Los importes van en la moneda de la cuota (`$` o `US$`).
+ *
+ * Si el contrato tiene conceptos que paga el propietario, la cuota los lleva como gastos suyos («Gastos del propietario»): se cargaron
+ * solos al generarla y se anulan con ella, por eso acá sólo se miran.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -13,7 +16,7 @@ import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { Dato } from '@/components/Dato'
 import { DialogoDeCargo } from '@/components/DialogoDeCargo'
 import { DialogoDeMotivo } from '@/components/DialogoDeMotivo'
-import { EstadoDeCuota } from '@/components/Estados'
+import { Anulado, EstadoDeCuota } from '@/components/Estados'
 import { AvisoDeError } from '@/components/listado'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,7 +29,6 @@ import { pesos } from '@/lib/importes'
 export function CuotaDetalle() {
   const { id } = useParams()
   const [cuota, setCuota] = useState<Cuota | null>(null)
-  const [moneda, setMoneda] = useState('ARS')
   const [conceptos, setConceptos] = useState<ConceptoDelContrato[]>([])
   const [cobro, setCobro] = useState<Cobro | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -39,11 +41,10 @@ export function CuotaDetalle() {
       .then(async (q) => {
         setCuota(q)
         setError(null)
-        // El contrato da la moneda y los conceptos para «Cargar un cargo»; el cobro, si ya se cobró, para enlazarlo. Si alguno falla, la
-        // ficha sigue siendo útil: se queda con lo que tiene.
+        // El contrato da los conceptos para «Cargar un cargo»; el cobro, si ya se cobró, para enlazarlo. Si alguno falla, la ficha sigue
+        // siendo útil: se queda con lo que tiene. La moneda ya viene en la cuota.
         try {
           const c = await contratos.obtener(q.contrato_id)
-          setMoneda(c.moneda)
           setConceptos(c.conceptos)
         } catch {
           /* la ficha no depende de esto */
@@ -88,6 +89,7 @@ export function CuotaDetalle() {
   }
 
   const pendiente = cuota.estado === 'pendiente'
+  const moneda = cuota.moneda
 
   return (
     <div className="space-y-3">
@@ -195,6 +197,43 @@ export function CuotaDetalle() {
           </Table>
         </CardContent>
       </Card>
+
+      {cuota.gastos_del_propietario.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Gastos del propietario</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Lo que paga el propietario por esta cuota se cargó solo como gasto por su cuenta y se descuenta en su liquidación. No se anula
+              suelto: se anula junto con la cuota.
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead className="text-right">Importe</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cuota.gastos_del_propietario.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell>
+                      <span className={g.anulado ? 'text-muted-foreground line-through' : undefined}>{g.descripcion}</span>
+                      {g.anulado && (
+                        <span className="ml-2">
+                          <Anulado />
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className={`text-right ${g.anulado ? 'text-muted-foreground line-through' : ''}`}>{pesos(g.importe, moneda)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {cargando && (
         <DialogoDeCargo

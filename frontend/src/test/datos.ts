@@ -6,7 +6,7 @@
  */
 import type {
   Cobro, ConceptoDelContrato, Contrato, ContratoDetalle, Cuota, FondosDeTerceros, Gasto, IndiceDeAjuste, Liquidacion,
-  PrevisualizacionDeCuotas, PrevisualizacionDeLiquidacion, PropuestaDeAjuste, PropuestaDeCobro, Propiedad,
+  PrevisualizacionDeCuotas, PrevisualizacionDeLiquidacion, PropuestaDeAjuste, PropuestaDeCobro, PropuestaDeCuota, Propiedad,
 } from '@/lib/api'
 
 export const ANA = { id: 1, name: 'Ana Inventada', cuit_dni: '27000000011', activo: 1 }
@@ -84,6 +84,16 @@ export const CONTRATO: Contrato = {
   observaciones: 'Mascota permitida.',
   importe_vigente: '450000.00',
   precio_vigente_desde: '2026-03-01',
+}
+
+/** Un contrato en dólares: sus importes se imprimen con `US$`. */
+export const CONTRATO_EN_DOLARES: Contrato = {
+  ...CONTRATO,
+  id: 9,
+  numero: 'C-000009',
+  moneda: 'USD',
+  deposito: '1200.00',
+  importe_vigente: '1200.00',
 }
 
 export const CONCEPTO_EXPENSAS: ConceptoDelContrato = {
@@ -208,6 +218,7 @@ export const FALTA_DE_INDICE = {
 
 export const CUOTA_PENDIENTE: Cuota = {
   id: 30,
+  moneda: 'ARS',
   contrato_id: 5,
   numero_contrato: 'C-000005',
   inquilino_id: 3,
@@ -221,6 +232,7 @@ export const CUOTA_PENDIENTE: Cuota = {
   dias_del_periodo: 30,
   total: '462500.50',
   estado: 'pendiente',
+  gastos_del_propietario: [],
   lineas: [
     { id: 1, tipo: 'alquiler', concepto_id: null, descripcion: 'Alquiler noviembre 2026', importe: '450000.00' },
     { id: 2, tipo: 'concepto', concepto_id: 13, descripcion: 'ABL', importe: '12500.50' },
@@ -229,6 +241,25 @@ export const CUOTA_PENDIENTE: Cuota = {
 
 export const CUOTA_COBRADA: Cuota = { ...CUOTA_PENDIENTE, id: 31, periodo_desde: '2026-10-01', periodo_hasta: '2026-10-31', estado: 'cobrada' }
 export const CUOTA_ANULADA: Cuota = { ...CUOTA_PENDIENTE, id: 32, periodo_desde: '2026-09-01', periodo_hasta: '2026-09-30', estado: 'anulada' }
+
+/** Una cuota de un contrato en dólares: sus importes se imprimen con `US$`. */
+export const CUOTA_EN_DOLARES: Cuota = {
+  ...CUOTA_PENDIENTE,
+  id: 33,
+  moneda: 'USD',
+  total: '1200.00',
+  lineas: [{ id: 5, tipo: 'alquiler', concepto_id: null, descripcion: 'Alquiler noviembre 2026', importe: '1200.00' }],
+}
+
+/** Una cuota con un concepto que paga el propietario (el seguro): se cargó sola como gasto por su cuenta, y el segundo está anulado. */
+export const CUOTA_CON_GASTOS_DEL_PROPIETARIO: Cuota = {
+  ...CUOTA_PENDIENTE,
+  id: 34,
+  gastos_del_propietario: [
+    { id: 70, descripcion: 'Seguro', importe: '12500.50', anulado: false },
+    { id: 71, descripcion: 'Seguro anterior', importe: '9000.00', anulado: true },
+  ],
+}
 
 /** Los conceptos del contrato que paga el inquilino: las expensas (variables) y el ABL (fijo, ya en la cuota). */
 export const CONCEPTOS_DEL_INQUILINO: ConceptoDelContrato[] = [
@@ -245,6 +276,7 @@ export const PREVISUALIZACION_DE_CUOTAS: PrevisualizacionDeCuotas = {
       contrato_id: 5,
       numero: 'C-000005',
       bloqueada: null,
+      moneda: 'ARS',
       precio_id: 2,
       periodo_desde: '2026-11-01',
       periodo_hasta: '2026-11-30',
@@ -254,13 +286,17 @@ export const PREVISUALIZACION_DE_CUOTAS: PrevisualizacionDeCuotas = {
       dias_cubiertos: 30,
       dias_del_periodo: 30,
       alquiler: '450000.00',
+      tramos: [{ precio_id: 2, desde: '2026-11-01', hasta: '2026-11-30', dias: 30, importe: '450000.00', ajuste: false }],
       conceptos: [{ concepto_id: 13, descripcion: 'ABL', importe: '8500.25' }],
       variables: [{ concepto_id: 11, descripcion: 'Expensas' }],
+      gastos_del_propietario: [],
+      a_cargar_como_gasto: [],
     },
     {
       contrato_id: 7,
       numero: 'C-000007',
       bloqueada: null,
+      moneda: 'ARS',
       precio_id: 5,
       periodo_desde: '2026-11-20',
       periodo_hasta: '2026-11-30',
@@ -270,12 +306,40 @@ export const PREVISUALIZACION_DE_CUOTAS: PrevisualizacionDeCuotas = {
       dias_cubiertos: 11,
       dias_del_periodo: 30,
       alquiler: '165000.00',
+      tramos: [{ precio_id: 5, desde: '2026-11-20', hasta: '2026-11-30', dias: 11, importe: '165000.00', ajuste: false }],
       conceptos: [],
       variables: [],
+      gastos_del_propietario: [],
+      a_cargar_como_gasto: [],
     },
   ],
   ya_generadas: [{ contrato_id: 8, numero: 'C-000008', cuota_id: 31 }],
   bloqueadas: [{ contrato_id: 9, numero: 'C-000009', motivo: 'Tiene el ajuste del 01-11-2026 pendiente: aplicalo primero.' }],
+}
+
+/** Un contrato en dólares con un ajuste a mitad de mes (dos tramos de precio) y dos conceptos que paga el propietario. */
+export const PROPUESTA_EN_DOLARES_CON_TRAMOS: PropuestaDeCuota = {
+  contrato_id: 9,
+  numero: 'C-000009',
+  bloqueada: null,
+  moneda: 'USD',
+  precio_id: 8,
+  periodo_desde: '2026-11-01',
+  periodo_hasta: '2026-11-30',
+  fecha_emision: '2026-11-01',
+  fecha_vencimiento: '2026-11-10',
+  prorrateada: false,
+  dias_cubiertos: 30,
+  dias_del_periodo: 30,
+  alquiler: '1230.00',
+  tramos: [
+    { precio_id: 7, desde: '2026-11-01', hasta: '2026-11-14', dias: 14, importe: '560.00', ajuste: false },
+    { precio_id: 8, desde: '2026-11-15', hasta: '2026-11-30', dias: 16, importe: '670.00', ajuste: true },
+  ],
+  conceptos: [],
+  variables: [],
+  gastos_del_propietario: [{ concepto_id: 12, descripcion: 'Seguro', importe: '40.50' }],
+  a_cargar_como_gasto: [{ concepto_id: 14, descripcion: 'Reparación del consorcio' }],
 }
 
 export const COBRO_EN_TERMINO: PropuestaDeCobro = {
@@ -300,6 +364,7 @@ export const COBRO_CON_PUNITORIO: PropuestaDeCobro = {
 
 export const COBRO: Cobro = {
   id: 40,
+  moneda: 'ARS',
   cuota_id: 30,
   periodo_desde: '2026-11-01',
   contrato_id: 5,
@@ -328,6 +393,9 @@ export const COBRO: Cobro = {
   ],
 }
 
+/** Un cobro de una cuota en dólares: la moneda del cobro es la del contrato. */
+export const COBRO_EN_DOLARES: Cobro = { ...COBRO, id: 44, moneda: 'USD' }
+
 export const COBRO_ANULADO: Cobro = { ...COBRO, id: 41, anulado: true, motivo_anulacion: 'Se cobró dos veces (operador1)', recibo: { ...COBRO.recibo!, anulado: true } }
 
 export const GASTO: Gasto = {
@@ -339,9 +407,12 @@ export const GASTO: Gasto = {
   categoria: 'reparacion',
   descripcion: 'Cambio de la bomba de agua',
   importe: '85000.00',
+  moneda: 'ARS',
   comprobante: 'A-0001-123',
   anulado: false,
   usuario: 'operador1',
+  cuota_id: null,
+  concepto_id: null,
   imputaciones: [
     { propietario_id: 1, propietario_nombre: 'Ana Inventada', importe: '51000.00' },
     { propietario_id: 2, propietario_nombre: 'Beto Ejemplo', importe: '34000.00' },
@@ -349,6 +420,12 @@ export const GASTO: Gasto = {
 }
 
 export const GASTO_ANULADO: Gasto = { ...GASTO, id: 51, descripcion: 'Pintura del palier', anulado: true }
+
+/** Un gasto nacido de una cuota (un concepto que paga el propietario): se anula con la cuota, no suelto. */
+export const GASTO_DE_CUOTA: Gasto = { ...GASTO, id: 52, descripcion: 'Seguro', importe: '12500.50', cuota_id: 30, concepto_id: 12, imputaciones: [] }
+
+/** Un gasto en dólares. */
+export const GASTO_EN_DOLARES: Gasto = { ...GASTO, id: 53, descripcion: 'Cambio del termotanque', importe: '300.00', moneda: 'USD' }
 
 export const ITEMS_DE_LIQUIDACION = [
   {
@@ -377,6 +454,8 @@ export const PREVISUALIZACION_DE_LIQUIDACION: PrevisualizacionDeLiquidacion = {
   propietario_id: 1,
   propietario_nombre: 'Ana Inventada',
   hasta: '2026-11-15',
+  moneda: 'ARS',
+  monedas_con_pendientes: ['ARS'],
   items: ITEMS_DE_LIQUIDACION,
   cobrado: '270000.00',
   gastos: '51000.00',
@@ -391,6 +470,7 @@ export const LIQUIDACION: Liquidacion = {
   propietario_nombre: 'Ana Inventada',
   fecha: '2026-11-15',
   hasta: '2026-11-15',
+  moneda: 'ARS',
   cobrado: '270000.00',
   gastos: '51000.00',
   comision: '13500.00',
@@ -414,14 +494,33 @@ export const LIQUIDACION_PAGADA: Liquidacion = {
   referencia_pago: 'TR-5544',
 }
 
+/** Una liquidación en dólares (la del mismo propietario, aparte de la de pesos). */
+export const LIQUIDACION_EN_DOLARES: Liquidacion = { ...LIQUIDACION, id: 63, numero: 'L-000004', moneda: 'USD' }
+
 export const LIQUIDACION_ANULADA: Liquidacion = { ...LIQUIDACION, id: 62, numero: 'L-000003', estado: 'anulada', items: [] }
 
 export const FONDOS: FondosDeTerceros = {
   a_pagar_a_propietarios: [
-    { tercero_id: 1, nombre: 'Ana Inventada', saldo: '205500.00' },
-    { tercero_id: 2, nombre: 'Beto Ejemplo', saldo: '136000.00' },
+    { tercero_id: 1, nombre: 'Ana Inventada', saldo: '205500.00', moneda: 'ARS' },
+    { tercero_id: 2, nombre: 'Beto Ejemplo', saldo: '136000.00', moneda: 'ARS' },
   ],
-  total_a_pagar: '341500.00',
-  inquilinos_deudores: [{ tercero_id: 3, nombre: 'Carla Ficticia', saldo: '462500.50' }],
-  total_adeudado: '462500.50',
+  inquilinos_deudores: [{ tercero_id: 3, nombre: 'Carla Ficticia', saldo: '462500.50', moneda: 'ARS' }],
+  totales: [{ moneda: 'ARS', a_pagar: '341500.00', adeudado: '462500.50' }],
+}
+
+/** Fondos con pesos y dólares: Ana tiene saldo en las dos monedas, y los totales van uno por moneda. */
+export const FONDOS_EN_DOS_MONEDAS: FondosDeTerceros = {
+  a_pagar_a_propietarios: [
+    { tercero_id: 1, nombre: 'Ana Inventada', saldo: '205500.00', moneda: 'ARS' },
+    { tercero_id: 1, nombre: 'Ana Inventada', saldo: '1800.50', moneda: 'USD' },
+    { tercero_id: 2, nombre: 'Beto Ejemplo', saldo: '136000.00', moneda: 'ARS' },
+  ],
+  inquilinos_deudores: [
+    { tercero_id: 3, nombre: 'Carla Ficticia', saldo: '462500.50', moneda: 'ARS' },
+    { tercero_id: 3, nombre: 'Carla Ficticia', saldo: '1200.00', moneda: 'USD' },
+  ],
+  totales: [
+    { moneda: 'ARS', a_pagar: '341500.00', adeudado: '462500.50' },
+    { moneda: 'USD', a_pagar: '1800.50', adeudado: '1200.00' },
+  ],
 }

@@ -32,6 +32,8 @@ const Cascaron = createLayout<Usuario>({
   // TAMBIÉN su `line-height`, así que el `leading-none` de `libra-ui` pierde contra el `text-[15px]` de acá.
   wordmarkClassName: `${WORDMARK} text-[15px]/[17px]`,
   homeTo: '/inicio',
+  // La barra de estado del pie (libra-ui ADR-083), como en los otros ocho: `GET /api/estado-del-sistema`.
+  barraDeEstado: true,
   navSections: [
     // Sin label: es lo del día a día. Las entradas de dominio se suman acá (cobros y liquidaciones, en las próximas fases).
     //

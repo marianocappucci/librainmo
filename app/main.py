@@ -30,6 +30,8 @@ from libracore.config_router import (
 )
 from libracore.db import core as libracore_core
 from libracore.indices_ajuste import INDICES, IndiceFaltante
+from libracore.modules_gate import require_module
+from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.tema_router import build_tema_admin_router, build_tema_router
@@ -228,5 +230,17 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
             reabrir_conexiones=motor.dispose,
         ),
         dependencies=[Depends(require_admin)],
+    )
+
+    # La copia externa: el administrador conecta el Google Drive o el Dropbox de la inmobiliaria desde Configuración →
+    # Datos / Backup (`/api/config/resguardo-externo/enlace`). El router es del motor; subir es del host, por cron, con
+    # el `rclone.conf` que este router deja en `backups_dir/.resguardo/` (por eso es la MISMA variable que el backup).
+    #
+    # 🔴 **Es un add-on**, apagado hasta que el backoffice lo prenda en la instancia: el segundo gate es el módulo
+    # `resguardo_externo`, y apagado contesta 403, que la pantalla del kit lee como «tu plan no lo incluye» y esconde la
+    # tarjeta. El callback de OAuth va detrás de los mismos gates a propósito (docstring del router).
+    app.include_router(
+        build_resguardo_enlace_router(backups_dir, carpeta="Resguardo LibraInmo"),
+        dependencies=[Depends(require_admin), Depends(require_module("resguardo_externo"))],
     )
     return app

@@ -36,7 +36,8 @@ def test_los_planes_y_sus_modulos():
     assert plans.modulos_de_plan("inexistente") == set()
     assert plans.MODULOS == ["alquileres"]
     assert set(plans.PLAN_LABELS) == set(plans.PLANES)
-    assert plans.ADDONS == set()
+    assert plans.ADDONS == {"resguardo_externo"}
+    assert not plans.ADDONS & plans.TODOS_LOS_MODULOS                  # ningún plan toca un add-on
 
 
 def test_los_precios_son_una_decision_comercial_y_van_vacios():
@@ -138,3 +139,27 @@ def test_los_roles_no_se_cruzan_con_los_planes(app_con_ruta_gateada, como):
     # El plan decide si el módulo existe; el rol, quién lo usa. Con el módulo prendido, entran los dos roles.
     for rol in ROLES:
         assert como(rol).get(RUTA).status_code == 200
+
+
+# ── el add-on de la copia externa ─────────────────────────────────────────────────────────────────────────
+
+
+def test_el_add_on_arranca_apagado_y_la_pantalla_recibe_403(app, admin):
+    """Apagado contesta 403: la tarjeta del kit lo lee como «tu plan no lo incluye» y no se muestra."""
+    assert app.state.modules.is_enabled("resguardo_externo") is False
+    assert admin.get("/api/config/resguardo-externo/enlace").status_code == 403
+
+
+def test_prendido_el_administrador_ve_el_enlace_y_el_operador_no(app, admin, como):
+    app.state.modules.set_enabled("resguardo_externo", True)
+    r = admin.get("/api/config/resguardo-externo/enlace")
+    assert r.status_code == 200, r.text
+    assert set(r.json()) == {"proveedores", "enlace"} and r.json()["enlace"] in (None, {})   # sin conectar todavía
+    assert como("operador").get("/api/config/resguardo-externo/enlace").status_code == 403
+
+
+def test_aplicar_el_plan_no_apaga_el_add_on(app):
+    app.state.modules.set_enabled("resguardo_externo", True)
+    app.state.modules.aplicar_plan("alquileres")
+    assert app.state.modules.is_enabled("resguardo_externo") is True
+

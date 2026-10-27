@@ -42,8 +42,12 @@ MODULO_LABELS = {
     "alquileres": "Alquileres (propiedades, contratos, cobro y liquidación)",
 }
 
-#: Sin add-ons todavía.
-ADDONS: set[str] = set()
+#: Add-ons: se prenden por instancia desde el backoffice y no pertenecen a ningún plan. Vienen **apagados**, no se
+#: siembran y ningún plan los toca (`TODOS_LOS_MODULOS - ADDONS`), así que un add-on prendido sobrevive a cambiar de
+#: plan. Mismo contrato que el resto de la familia (`libracore.db.modulos.apply_plan` lee este set).
+#:   - resguardo_externo: la copia del backup en el Google Drive o el Dropbox de la inmobiliaria, que la conecta el
+#:     administrador desde Configuración → Datos / Backup (`libracore.resguardo_enlace`). Subir es del host, por cron.
+ADDONS: set[str] = {"resguardo_externo"}
 
 
 def modulos_de_plan(plan: str) -> set[str]:
@@ -69,7 +73,7 @@ def aplicar_plan_en_db(url: str, plan: str) -> None:
     apply_plan_modules(
         url,
         active_modules=modulos_de_plan(plan),
-        # `- ADDONS`: aplicar un plan nunca toca un add-on (hoy no hay ninguno).
+        # `- ADDONS`: aplicar un plan nunca toca un add-on (`resguardo_externo`).
         all_modules=TODOS_LOS_MODULOS - ADDONS,
         plan=plan,
     )

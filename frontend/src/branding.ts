@@ -6,20 +6,12 @@
 // pantallas dejen de coincidir, que es el tipo de divergencia que nadie reporta
 // porque nunca se ven juntas.
 //
-// 🟡 **LibraInmo todavía no tiene identidad en el kit.** Los otros productos pasan
-// `producto="libraclub"` y similares: `libra-ui/identidad` (ADR-033) es la ÚNICA tabla
-// de colores e íconos de marca de la familia y hoy no conoce a LibraInmo. Inventar acá
-// un color sería abrir una segunda tabla, así que el producto usa los tokens neutros
-// del tema y una marca propia sencilla (`/favicon.svg`: una casa sobre grafito) hasta
-// que se la agregue en el kit — pendiente en `TASKS.md`. Cuando esté, se cambia `LOGO`
-// por `producto: 'librainmo'` en `Layout.tsx` y `Login.tsx` y se llama a
-// `aplicarIdentidad('librainmo')` en `main.tsx`.
+// El color, la marca (casa y llave) y el fondo del login NO están acá: son de `libra-ui/identidad` (ADR-033, LibraInmo desde v0.182.0,
+// ADR-096), la única tabla de la familia. Los pone `producto: 'librainmo'` en el login y la sidebar y `aplicarIdentidad('librainmo')` en
+// `main.tsx`; `public/favicon.svg` es una copia de `marcas/librainmo-favicon.svg` del kit.
 
 /** Cómo se escribe el producto. Una sola vez: el título de la pestaña, el login y la sidebar. */
 export const PRODUCTO = 'LibraInmo'
-
-/** La marca del producto: la que ya sirve `public/favicon.svg`. */
-export const LOGO = { src: '/favicon.svg', alt: PRODUCTO } as const
 
 /**
  * Cómo se escribe «LibraInmo» al lado del logo: Montserrat Bold `#2d2d2d`.

@@ -16,7 +16,7 @@ Trabajo concreto y vigente.
 ## Bloqueadas
 
 - [ ] Alta por el backoffice / `libracore-migrar --prefijo librainmo` — bloqueo: `librainmo` no figura en `libracore.db.url_de_instancia._UNA_SOLA_BASE` (arreglo de fondo en el motor, ADR-002) [H: autorizar el cambio en `libracore`]
-- [ ] Identidad en el kit (`libra-ui/identidad`): hoy el producto usa los tokens neutros y una marca propia sencilla (`/favicon.svg`) — bloqueo: agregarla al kit
+- [x] Identidad en el kit: lima, casa y llave y la foto del hero de fondo en el login (libra-ui v0.182.0, ADR-096)
 - [ ] Repo en GitHub, CI y dev — bloqueo: nombre definitivo y dominios [H]
 - [ ] Fase 0 en `libracore` (cálculo del ajuste, aritmética de períodos y devengado, punitorios, descarga de índices oficiales): es previa a que el producto ajuste contratos
 

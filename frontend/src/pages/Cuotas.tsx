@@ -4,6 +4,8 @@
  *
  * Los filtros los resuelve el servidor (`?estado=&contrato_id=&desde=&hasta=`). El rango se arma con el primer día del mes «desde» y el
  * último del mes «hasta» (`lib/fechas.ts`, sin `Date`): la cuota se filtra por el comienzo de su período.
+ *
+ * Una pendiente con pagos a cuenta (ADR-010) sigue pendiente, y el estado dice cuánto le falta: «Pendiente · saldo $ X».
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -13,7 +15,7 @@ import { DataTable, sortableHeader } from 'libra-ui/data-table'
 import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { SelectBuscable } from 'libra-ui/SelectBuscable'
 
-import { EstadoDeCuota } from '@/components/Estados'
+import { EstadoDeCuotaConSaldo } from '@/components/Estados'
 import { AvisoDeError } from '@/components/listado'
 import { SelectCerrado } from '@/components/SelectCerrado'
 import { Button } from '@/components/ui/button'
@@ -118,8 +120,8 @@ export function Cuotas() {
       {
         accessorKey: 'estado',
         header: sortableHeader('Estado'),
-        size: 130,
-        cell: ({ row }) => <EstadoDeCuota estado={row.original.estado} />,
+        size: 220,
+        cell: ({ row }) => <EstadoDeCuotaConSaldo cuota={row.original} />,
       },
     ],
     [],

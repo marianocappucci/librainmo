@@ -15,16 +15,20 @@ TIPOS_IMPUTACION = ("alquiler", "concepto", "punitorio")
 
 
 class Cobro(ConTiempos, Base):
-    """Lo que pagó el inquilino por una cuota: la cuota entera más el punitorio, si pagó tarde.
+    """Lo que pagó el inquilino por una cuota: entera, o **a cuenta** (ADR-010). Lo pagado va primero al punitorio
+    adeudado y el resto a la cuota (`importe_cuota`), repartido en proporción entre alquiler y conceptos.
 
     Deja tres huellas en el libro del motor, en la misma transacción: el haber del inquilino (con su recibo), el debe
-    del punitorio (si lo hubo) y un haber en la cuenta de cada propietario por su parte (`CobroImputacion`).
+    del punitorio cobrado (si lo hubo) y un haber en la cuenta de cada propietario por su parte (`CobroImputacion`).
     """
 
     __tablename__ = "cobros"
     __table_args__ = (
-        CheckConstraint("importe_cuota > 0", name="importe_cuota"),
+        # Un pago a cuenta que no alcanza a cubrir el punitorio no toca la cuota: `importe_cuota` puede ser cero.
+        CheckConstraint("importe_cuota >= 0", name="importe_cuota"),
         CheckConstraint("punitorio >= 0", name="punitorio"),
+        CheckConstraint("punitorio_pendiente >= 0", name="punitorio_pendiente"),
+        CheckConstraint("total > 0", name="total"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -34,6 +38,8 @@ class Cobro(ConTiempos, Base):
     punitorio: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     #: El punitorio que correspondía y se perdonó (queda la constancia de cuánto era).
     punitorio_condonado: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
+    #: El punitorio devengado que este pago no alcanzó a cubrir: lo arrastra el próximo cobro de la cuota (ADR-010).
+    punitorio_pendiente: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     dias_de_atraso: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     #: Los medios con que pagó: `[{medio_pago, referencia, monto}]`, como texto JSON.

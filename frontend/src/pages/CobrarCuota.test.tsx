@@ -4,7 +4,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CobrarCuota } from './CobrarCuota'
-import { COBRO, COBRO_CON_PUNITORIO, COBRO_EN_DOLARES, COBRO_EN_TERMINO, CUOTA_EN_DOLARES, CUOTA_PENDIENTE } from '@/test/datos'
+import {
+  COBRO, COBRO_A_CUENTA, COBRO_CON_PAGO_A_CUENTA, COBRO_CON_PUNITORIO, COBRO_EN_DOLARES, COBRO_EN_TERMINO, CUOTA_CON_PAGOS_A_CUENTA,
+  CUOTA_EN_DOLARES, CUOTA_PENDIENTE,
+} from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import { hoyISO } from '@/lib/fechas'
 
@@ -53,7 +56,7 @@ async function escribirMonto(user: Usuario, n: number, valor: string) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Cobrar una cuota — la moneda', () => {
-  it('🔴 la propuesta de cobro no trae la moneda: sale de la cuota, y la cuota en dólares se cobra con «US$» (cuota, punitorio, total, diferencia y confirmación)', async () => {
+  it('🔴 la moneda sale de la cuota (carga antes que la propuesta): la cuota en dólares se cobra con «US$» (cuota, punitorio, total, diferencia y confirmación)', async () => {
     const user = userEvent.setup()
     const api = base()
     api.responder('GET /api/cuotas/30', json({ ...CUOTA_EN_DOLARES, id: 30 }))
@@ -249,5 +252,181 @@ describe('Cobrar una cuota — el recibo', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Los medios de pago suman 400000.00')
     expect(screen.getByLabelText('Monto 1')).toHaveValue('462.500,50')
+  })
+})
+
+const importeACobrar = () => screen.getByLabelText('Importe a cobrar')
+
+async function escribirImporte(user: Usuario, valor: string) {
+  await user.clear(importeACobrar())
+  await user.type(importeACobrar(), valor)
+}
+
+describe('Cobrar una cuota — pagar a cuenta (ADR-010)', () => {
+  it('🔴 «Importe a cobrar» arranca en el total, el monto del medio lo sigue, y sin tocarlo no viaja `importe`: se cobra todo', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    montar()
+    await conFecha('2026-11-14')
+    await waitFor(() => expect(importeACobrar()).toHaveValue('471.750,51'))
+    expect(screen.queryByText(/Es un pago a cuenta/)).not.toBeInTheDocument()
+
+    await user.click(registrar())
+    await waitFor(() => expect(api.de('POST', '/api/cuotas/30/cobrar')).toHaveLength(1))
+    expect(api.de('POST', '/api/cuotas/30/cobrar')[0].cuerpo).not.toHaveProperty('importe')
+  })
+
+  it('🔴 bajar el importe es un pago a cuenta: el medio sigue al importe, el aviso dice cuánto queda de saldo, y viaja `importe` con los medios sumándolo', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('POST /api/cuotas/30/cobrar', json(COBRO_A_CUENTA, 201))
+    montar()
+    await conFecha('2026-11-08')
+
+    await escribirImporte(user, '200000')
+    await waitFor(() => expect(screen.getByLabelText('Monto 1')).toHaveValue('200.000,00'))
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Es un pago a cuenta: va primero al punitorio adeudado ($ 0,00) y el resto a la cuota ($ 200.000,00). La cuota sigue pendiente con un saldo de $ 262.500,50.',
+    )
+    expect(screen.getByText('Los medios cierran con el importe a cobrar.')).toBeInTheDocument()
+    expect(screen.getByText(/de \$ 200\.000,00$/)).toBeInTheDocument()
+    expect(registrar()).toBeEnabled()
+    await user.click(registrar())
+
+    await waitFor(() => expect(api.de('POST', '/api/cuotas/30/cobrar')).toHaveLength(1))
+    expect(api.de('POST', '/api/cuotas/30/cobrar')[0].cuerpo).toEqual({
+      fecha: '2026-11-08',
+      condonar_punitorio: false,
+      importe: '200000.00',
+      medios: [{ medio_pago: 'efectivo', referencia: null, monto: '200000.00' }],
+    })
+    // Después de cobrar sigue como siempre (el recibo y los enlaces), y avisa que la cuota sigue pendiente.
+    expect(await screen.findByText('Cobro de $ 200.000,00 el 14-11-2026')).toBeInTheDocument()
+    expect(screen.getByText('Fue un pago a cuenta: la cuota sigue pendiente con su saldo.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ver el cobro' })).toHaveAttribute('href', '/cobros/45')
+  })
+
+  it('🔴 los medios tienen que sumar el importe a cobrar, no el total: con el total en el medio, se pasa', async () => {
+    const user = userEvent.setup()
+    base()
+    montar()
+    await conFecha('2026-11-08')
+
+    await escribirImporte(user, '200000')
+    await escribirMonto(user, 1, '462.500,50')
+    expect(screen.getByText('Los medios se pasan del importe a cobrar por $ 262.500,50.')).toBeInTheDocument()
+    expect(registrar()).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Agregar otro medio' }))
+    await escribirMonto(user, 1, '150000')
+    await escribirMonto(user, 2, '50000')
+    expect(screen.getByText('Los medios cierran con el importe a cobrar.')).toBeInTheDocument()
+    expect(registrar()).toBeEnabled()
+  })
+
+  it('escribir el total exacto no es un pago a cuenta: no viaja `importe`', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    montar()
+    await conFecha('2026-11-08')
+
+    await escribirImporte(user, '462.500,50')
+    expect(screen.queryByText(/Es un pago a cuenta/)).not.toBeInTheDocument()
+    await user.click(registrar())
+    await waitFor(() => expect(api.de('POST', '/api/cuotas/30/cobrar')).toHaveLength(1))
+    expect(api.de('POST', '/api/cuotas/30/cobrar')[0].cuerpo).not.toHaveProperty('importe')
+  })
+
+  it('🔴 un importe de cero, mal escrito o mayor que el total se avisa y no deja cobrar; «Cobrar el total» lo devuelve', async () => {
+    const user = userEvent.setup()
+    base()
+    montar()
+    await conFecha('2026-11-08')
+
+    await escribirImporte(user, '462.500,51')
+    expect(screen.getByRole('alert')).toHaveTextContent('No se cobra más de lo que se debe ($ 462.500,50).')
+    expect(registrar()).toBeDisabled()
+    await escribirImporte(user, '0')
+    expect(screen.getByRole('alert')).toHaveTextContent('El importe a cobrar tiene que ser un monto mayor que cero')
+    expect(registrar()).toBeDisabled()
+    await escribirImporte(user, 'abc')
+    expect(registrar()).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Cobrar el total' }))
+    expect(importeACobrar()).toHaveValue('462.500,50')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await waitFor(() => expect(registrar()).toBeEnabled())
+  })
+
+  it('🔴 lo pagado va primero al punitorio: un importe menor que el punitorio no toca la cuota y deja el resto del punitorio sin cubrir', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    montar()
+    await conFecha('2026-11-14')
+
+    await escribirImporte(user, '5000')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Es un pago a cuenta: va primero al punitorio adeudado ($ 5.000,00) y el resto a la cuota ($ 0,00). La cuota sigue pendiente con un saldo de $ 462.500,50, y quedan $ 4.250,01 de punitorio sin cubrir, que se arrastran al próximo cobro.',
+    )
+    await waitFor(() => expect(screen.getByLabelText('Monto 1')).toHaveValue('5.000,00'))
+    await user.click(registrar())
+    await waitFor(() => expect(api.de('POST', '/api/cuotas/30/cobrar')).toHaveLength(1))
+    expect(api.de('POST', '/api/cuotas/30/cobrar')[0].cuerpo).toMatchObject({ importe: '5000.00', condonar_punitorio: false })
+  })
+
+  it('al condonar el punitorio, el importe por omisión se recalcula (sin él) y un pago a cuenta va todo a la cuota', async () => {
+    const user = userEvent.setup()
+    base()
+    montar()
+    await conFecha('2026-11-14')
+    await waitFor(() => expect(importeACobrar()).toHaveValue('471.750,51'))
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Condonar el punitorio' }))
+    await waitFor(() => expect(importeACobrar()).toHaveValue('462.500,50'))
+    await escribirImporte(user, '400000')
+    expect(screen.getByRole('status')).toHaveTextContent('va primero al punitorio adeudado ($ 0,00) y el resto a la cuota ($ 400.000,00)')
+    expect(screen.getByRole('status')).toHaveTextContent('saldo de $ 62.500,50')
+  })
+
+  it('🔴 una cuota con pagos a cuenta muestra lo pagado, el saldo y el punitorio arrastrado; el total es el saldo más el punitorio', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/cuotas/30', json({ ...CUOTA_CON_PAGOS_A_CUENTA, id: 30 }))
+    api.responder('GET /api/cuotas/30/cobro', json(COBRO_CON_PAGO_A_CUENTA))
+    montar()
+    await conFecha('2026-11-20')
+
+    expect(screen.getByText('Cuota').nextSibling).toHaveTextContent('$ 462.500,50')
+    expect(screen.getByText('Ya pagado a cuenta').nextSibling).toHaveTextContent('$ 300.000,00')
+    expect(screen.getByText('Saldo de la cuota').nextSibling).toHaveTextContent('$ 162.500,50')
+    expect(screen.getByText('Punitorio').nextSibling).toHaveTextContent('$ 3.250,00')
+    expect(screen.getByText('Incluye $ 1.000,00 que un pago anterior no alcanzó a cubrir.')).toBeInTheDocument()
+    expect(screen.getByText('Total a cobrar').nextSibling).toHaveTextContent('$ 165.750,50')
+    await waitFor(() => expect(importeACobrar()).toHaveValue('165.750,50'))
+
+    // Condonar saca el punitorio (también el arrastrado): queda el saldo.
+    await user.click(screen.getByRole('checkbox', { name: 'Condonar el punitorio' }))
+    expect(screen.getByText('Total a cobrar').nextSibling).toHaveTextContent('$ 162.500,50')
+    await waitFor(() => expect(importeACobrar()).toHaveValue('162.500,50'))
+  })
+
+  it('una cuota sin pagos no muestra lo pagado ni el saldo', async () => {
+    base()
+    montar()
+    await conFecha('2026-11-08')
+    expect(screen.queryByText('Ya pagado a cuenta')).not.toBeInTheDocument()
+    expect(screen.queryByText('Saldo de la cuota')).not.toBeInTheDocument()
+    expect(screen.queryByText(/que un pago anterior no alcanzó/)).not.toBeInTheDocument()
+  })
+
+  it('si el pago no cubrió todo el punitorio, la confirmación avisa cuánto queda para el próximo cobro', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('POST /api/cuotas/30/cobrar', json({ ...COBRO_A_CUENTA, punitorio: '5000.00', punitorio_pendiente: '4250.01', importe_cuota: '0.00', total: '5000.00' }, 201))
+    montar()
+    await conFecha('2026-11-14')
+    await escribirImporte(user, '5000')
+    await user.click(registrar())
+    expect(await screen.findByText(/Quedaron \$ 4\.250,01 de punitorio sin cubrir/)).toBeInTheDocument()
   })
 })

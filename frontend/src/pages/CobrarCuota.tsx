@@ -1,12 +1,16 @@
 /**
  * Cobrar una cuota: la fecha, el punitorio que corresponde a ese día, los medios de pago y el recibo (ADR-006).
  *
- * 🔑 **Se cobra la cuota entera más el punitorio** (el pago parcial no está en esta tanda): por eso el total es un dato del servidor y los
- * medios tienen que sumarlo exacto. El punitorio lo calcula el motor (`GET /api/cuotas/{id}/cobro?fecha=`): la pantalla lo vuelve a pedir
- * cada vez que cambia la fecha, no lo calcula. «Condonar» lo saca del total (queda la constancia de cuánto era).
+ * 🔑 **Por omisión se cobra lo que falta de la cuota más el punitorio**: el total es un dato del servidor (`saldo` + `punitorio`) y los
+ * medios tienen que sumar lo que se cobra al centavo. El punitorio lo calcula el motor (`GET /api/cuotas/{id}/cobro?fecha=`): la pantalla lo
+ * vuelve a pedir cada vez que cambia la fecha, no lo calcula. «Condonar» lo saca del total (queda la constancia de cuánto era).
+ *
+ * 🔑 **Se puede pagar a cuenta** (ADR-010): «Importe a cobrar» arranca en el total y se puede bajar. Lo pagado va primero al punitorio adeudado
+ * y el resto a la cuota, que sigue pendiente con su saldo. El `importe` sólo viaja si es menor al total: sin él, el servidor cobra todo. Una
+ * cuota con pagos anteriores muestra lo ya pagado, el saldo y el punitorio que un pago no alcanzó a cubrir (`punitorio_arrastrado`).
  *
  * 🔴 Todo en centavos enteros: el total de los medios se suma sin `number` con decimales, y el botón no se habilita hasta que cierra al
- * centavo.
+ * centavo con el importe a cobrar.
  *
  * Al cobrar no se navega: se queda en una confirmación con el recibo (el PDF se abre en otra pestaña) y los enlaces para seguir.
  */
@@ -23,7 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cobros, cuotas, mensajeDeError, urlDelRecibo } from '@/lib/api'
 import type { Cobro, Cuota, PropuestaDeCobro } from '@/lib/api'
-import { DESTINOS_DE_PUNITORIO, MEDIOS_DE_COBRO, etiquetaDe } from '@/lib/dominio'
+import { DESTINOS_DE_PUNITORIO, MEDIOS_DE_COBRO, esPagoACuenta, etiquetaDe } from '@/lib/dominio'
 import { fecha as verFecha, hoyISO, nombreDelMes } from '@/lib/fechas'
 import { aCentesimas, deCentesimas, importePositivo, numeroArgentino, pesos } from '@/lib/importes'
 
@@ -40,6 +44,8 @@ export function CobrarCuota() {
   const [propuesta, setPropuesta] = useState<PropuestaDeCobro | null>(null)
   const [fecha, setFecha] = useState(hoyISO())
   const [condonar, setCondonar] = useState(false)
+  // Lo que se escribió en «Importe a cobrar»; `null` mientras no se toca: sigue al total.
+  const [importeEscrito, setImporteEscrito] = useState<string | null>(null)
   const [filas, setFilas] = useState<Fila[]>(() => [filaNueva()])
   const [cargandoPropuesta, setCargandoPropuesta] = useState(false)
   const [cobrando, setCobrando] = useState(false)
@@ -81,37 +87,70 @@ export function CobrarCuota() {
     }
   }, [id, fecha])
 
-  // La moneda del contrato (la propuesta de cobro no la trae): mientras la cuota carga, pesos.
+  // La moneda del contrato, de la cuota (que carga antes que la propuesta y no depende de la fecha): mientras carga, pesos.
   const moneda = cuota?.moneda ?? 'ARS'
   const conPunitorio = propuesta !== null && aCentesimas(propuesta.punitorio) !== 0
-  // El total a cobrar: lo que dice el servidor, sin el punitorio si se condona.
-  const total = propuesta ? (condonar ? propuesta.importe_cuota : propuesta.total) : null
+  // El total a cobrar, lo máximo: lo que dice el servidor, sin el punitorio si se condona (queda el saldo de la cuota).
+  const total = propuesta ? (condonar ? propuesta.saldo : propuesta.total) : null
   const totalEnCentavos = total === null ? null : aCentesimas(total)
+  const conPagos = propuesta !== null && aCentesimas(propuesta.pagado) !== 0
+  const punitorioArrastrado = propuesta !== null && aCentesimas(propuesta.punitorio_arrastrado) !== 0
 
-  // Con un solo medio que no se tocó, el monto sigue al total (lo más común: un solo pago por el total).
+  // Lo que se cobra: el total, o lo que se escribió si es válido (mayor que cero y no más que el total). `null` si lo escrito no sirve.
+  const aCobrar = importeEscrito === null ? total : importePositivo(importeEscrito)
+  const aCobrarEnCentavos = aCobrar === null ? null : aCentesimas(aCobrar)
+  const importeFueraDeRango =
+    aCobrarEnCentavos !== null && totalEnCentavos !== null && aCobrarEnCentavos > totalEnCentavos
+  const importeValido = aCobrarEnCentavos !== null && totalEnCentavos !== null && !importeFueraDeRango
+  // Un pago a cuenta es cobrar menos que el total: sólo entonces viaja `importe`.
+  const aCuenta = importeValido && aCobrarEnCentavos < (totalEnCentavos ?? 0)
+
+  // Cómo se reparte un pago a cuenta: primero el punitorio adeudado y el resto a la cuota (ADR-010).
+  const reparto = useMemo(() => {
+    if (!aCuenta || propuesta === null || aCobrarEnCentavos === null) return null
+    const punitorioEnCentavos = condonar ? 0 : (aCentesimas(propuesta.punitorio) ?? 0)
+    const alPunitorio = Math.min(aCobrarEnCentavos, punitorioEnCentavos)
+    const aLaCuotaEnCentavos = aCobrarEnCentavos - alPunitorio
+    return {
+      alPunitorio,
+      aLaCuota: aLaCuotaEnCentavos,
+      saldo: (aCentesimas(propuesta.saldo) ?? 0) - aLaCuotaEnCentavos,
+      punitorioSinCubrir: punitorioEnCentavos - alPunitorio,
+    }
+  }, [aCuenta, propuesta, aCobrarEnCentavos, condonar])
+
+  // Con un solo medio que no se tocó, el monto sigue a lo que se cobra (lo más común: un solo pago por el total).
   useEffect(() => {
-    if (total === null) return
+    if (!importeValido || aCobrar === null) return
     setFilas((previas) =>
-      previas.length === 1 && !previas[0].tocado ? [{ ...previas[0], monto: numeroArgentino(total, 2) }] : previas,
+      previas.length === 1 && !previas[0].tocado ? [{ ...previas[0], monto: numeroArgentino(aCobrar, 2) }] : previas,
     )
-  }, [total])
+  }, [importeValido, aCobrar])
 
   const montos = filas.map((f) => importePositivo(f.monto))
   const sumaEnCentavos = montos.every((m) => m !== null)
     ? (montos as string[]).reduce((suma, m) => suma + (aCentesimas(m) ?? 0), 0)
     : null
-  const diferencia = totalEnCentavos !== null && sumaEnCentavos !== null ? totalEnCentavos - sumaEnCentavos : null
+  const diferencia = importeValido && sumaEnCentavos !== null ? aCobrarEnCentavos - sumaEnCentavos : null
   const antesDeEmitir = cuota !== null && ISO.test(fecha) && fecha < cuota.fecha_emision
   const puedeCobrar =
-    propuesta !== null && !cargandoPropuesta && !antesDeEmitir && ISO.test(fecha) && diferencia === 0 && filas.every((f) => f.medio !== '')
+    propuesta !== null &&
+    !cargandoPropuesta &&
+    !antesDeEmitir &&
+    ISO.test(fecha) &&
+    importeValido &&
+    diferencia === 0 &&
+    filas.every((f) => f.medio !== '')
 
   const resumenDeLaDiferencia = useMemo(() => {
+    if (!importeValido) return 'Corregí el importe a cobrar para sumar los medios.'
     if (diferencia === null) return 'Escribí el monto de cada medio, con hasta dos decimales.'
-    if (diferencia === 0) return 'Los medios cierran con el total.'
+    if (diferencia === 0) return aCuenta ? 'Los medios cierran con el importe a cobrar.' : 'Los medios cierran con el total.'
+    const de = aCuenta ? 'del importe a cobrar' : 'del total'
     return diferencia > 0
       ? `Falta cobrar ${pesos(deCentesimas(diferencia), moneda)}.`
-      : `Los medios se pasan del total por ${pesos(deCentesimas(-diferencia), moneda)}.`
-  }, [diferencia, moneda])
+      : `Los medios se pasan ${de} por ${pesos(deCentesimas(-diferencia), moneda)}.`
+  }, [importeValido, aCuenta, diferencia, moneda])
 
   function cambiar(clave: number, parcial: Partial<Fila>) {
     setFilas((previas) => previas.map((f) => (f.clave === clave ? { ...f, ...parcial } : f)))
@@ -126,6 +165,7 @@ export function CobrarCuota() {
         await cobros.cobrar(Number(id), {
           fecha,
           condonar_punitorio: condonar,
+          ...(aCuenta && aCobrar !== null ? { importe: aCobrar } : {}),
           medios: filas.map((f, i) => ({
             medio_pago: f.medio,
             referencia: f.referencia.trim() || null,
@@ -162,6 +202,13 @@ export function CobrarCuota() {
               <p>
                 Recibo N° {cobro.recibo.numero}
                 {cobro.recibo.punto_venta ? ` (punto de venta ${cobro.recibo.punto_venta})` : ''}.
+              </p>
+            )}
+            {esPagoACuenta(cobro) && (
+              <p>
+                Fue un pago a cuenta: la cuota sigue pendiente con su saldo.
+                {aCentesimas(cobro.punitorio_pendiente) !== 0 &&
+                  ` Quedaron ${pesos(cobro.punitorio_pendiente, cobro.moneda)} de punitorio sin cubrir, que se arrastran al próximo cobro.`}
               </p>
             )}
             {aCentesimas(cobro.punitorio_condonado) !== 0 && (
@@ -225,6 +272,18 @@ export function CobrarCuota() {
                     <dt className="text-xs text-muted-foreground">Cuota</dt>
                     <dd className="text-sm">{pesos(propuesta.importe_cuota, moneda)}</dd>
                   </div>
+                  {conPagos && (
+                    <>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Ya pagado a cuenta</dt>
+                        <dd className="text-sm">{pesos(propuesta.pagado, moneda)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Saldo de la cuota</dt>
+                        <dd className="text-sm">{pesos(propuesta.saldo, moneda)}</dd>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <dt className="text-xs text-muted-foreground">Punitorio</dt>
                     <dd className="text-sm">
@@ -233,6 +292,11 @@ export function CobrarCuota() {
                         <span className="text-muted-foreground">
                           {' '}· {propuesta.dias_de_atraso} {propuesta.dias_de_atraso === 1 ? 'día' : 'días'} de atraso
                         </span>
+                      )}
+                      {punitorioArrastrado && (
+                        <div className="text-xs text-muted-foreground">
+                          Incluye {pesos(propuesta.punitorio_arrastrado, moneda)} que un pago anterior no alcanzó a cubrir.
+                        </div>
                       )}
                     </dd>
                   </div>
@@ -256,6 +320,44 @@ export function CobrarCuota() {
                     El punitorio es para {etiquetaDe(DESTINOS_DE_PUNITORIO, propuesta.punitorio_para).toLowerCase()}. Si se condona, no se
                     cobra y queda registrado cuánto era.
                   </p>
+                </div>
+              )}
+              {propuesta && (
+                <div className="space-y-1">
+                  <div className="grid gap-1.5 sm:w-56">
+                    <Label htmlFor="importe-a-cobrar">Importe a cobrar</Label>
+                    <Input
+                      id="importe-a-cobrar"
+                      inputMode="decimal"
+                      value={importeEscrito ?? numeroArgentino(total, 2)}
+                      aria-invalid={!importeValido}
+                      onChange={(e) => setImporteEscrito(e.target.value)}
+                      autoComplete="off"
+                      className="text-right"
+                    />
+                  </div>
+                  {importeEscrito !== null && (
+                    <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setImporteEscrito(null)}>
+                      Cobrar el total
+                    </Button>
+                  )}
+                  {importeEscrito !== null && !importeValido && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {importeFueraDeRango
+                        ? `No se cobra más de lo que se debe (${pesos(total, moneda)}).`
+                        : 'El importe a cobrar tiene que ser un monto mayor que cero, con hasta dos decimales.'}
+                    </p>
+                  )}
+                  {reparto && (
+                    <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                      Es un pago a cuenta: va primero al punitorio adeudado ({pesos(deCentesimas(reparto.alPunitorio), moneda)}) y el resto a la
+                      cuota ({pesos(deCentesimas(reparto.aLaCuota), moneda)}). La cuota sigue pendiente con un saldo de{' '}
+                      {pesos(deCentesimas(reparto.saldo), moneda)}
+                      {reparto.punitorioSinCubrir > 0 &&
+                        `, y quedan ${pesos(deCentesimas(reparto.punitorioSinCubrir), moneda)} de punitorio sin cubrir, que se arrastran al próximo cobro`}
+                      .
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -333,7 +435,7 @@ export function CobrarCuota() {
                 <p className="text-sm" aria-live="polite">
                   <span className="text-muted-foreground">Suma de los medios </span>
                   <span className="font-medium">{sumaEnCentavos === null ? '—' : pesos(deCentesimas(sumaEnCentavos), moneda)}</span>
-                  <span className="text-muted-foreground"> de {total === null ? '—' : pesos(total, moneda)}</span>
+                  <span className="text-muted-foreground"> de {aCobrar === null || !importeValido ? '—' : pesos(aCobrar, moneda)}</span>
                 </p>
               </div>
               <p className="text-sm text-muted-foreground">{resumenDeLaDiferencia}</p>

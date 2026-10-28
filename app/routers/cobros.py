@@ -26,7 +26,8 @@ def _usuario(usuario: dict | None) -> str:
 
 @de_cuotas.get("/{cuota_id}/cobro")
 def proponer(cuota_id: int, fecha: date | None = None, sesion: Session = Depends(obtener_sesion)):
-    """Cuánto hay que cobrar si paga el día `fecha` (hoy, si no se dice), con el punitorio. No escribe."""
+    """Cuánto hay que cobrar si paga el día `fecha` (hoy, si no se dice), con el punitorio y lo ya pagado a cuenta.
+    No escribe."""
     return servicio.proponer(sesion, cuota_id, fecha=fecha or tiempo.hoy())
 
 
@@ -34,7 +35,8 @@ def proponer(cuota_id: int, fecha: date | None = None, sesion: Session = Depends
 def cobrar(cuota_id: int, datos: CobroEntrada, sesion: Session = Depends(obtener_sesion),
            usuario=Depends(get_current_user)):
     return servicio.cobrar(sesion, cuota_id, fecha=datos.fecha, medios=[m.model_dump() for m in datos.medios],
-                           condonar_punitorio=datos.condonar_punitorio, usuario=_usuario(usuario))
+                           condonar_punitorio=datos.condonar_punitorio, importe=datos.importe,
+                           usuario=_usuario(usuario))
 
 
 @router.get("/medios")

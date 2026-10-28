@@ -6,8 +6,10 @@
  * Un movimiento se liquida una sola vez. La previsualización no escribe nada; si cambia el propietario o alguna fecha, se descarta (era
  * de otra consulta) y hay que volver a previsualizar.
  *
- * 🔴 No se emite con neto negativo (los gastos y la comisión superan lo cobrado): la deuda del propietario con la inmobiliaria y cómo se
- * arrastra a la liquidación siguiente es una regla del piloto que falta (ADR-007, punto 5). La pantalla lo dice y no ofrece emitir.
+ * 🔑 **Con neto negativo sí se emite** (los gastos y la comisión superan lo cobrado, ADR-011): sale `deudora`, no se paga y su saldo se descuenta
+ * en la próxima liquidación del propietario en esa moneda. La pantalla lo avisa antes de emitir. Si el propietario ya traía un saldo deudor
+ * de una liquidación anterior, la previsualización lo trae como un ítem `saldo` y lo resta del neto (`saldo_anterior`); no cuenta como movimiento:
+ * con sólo ese ítem no hay nada que liquidar.
  *
  * 🔑 **Una liquidación es de una moneda** (ADR-088 del motor): se elige (pesos por omisión) y entran sólo los movimientos en ella. Un
  * propietario con contratos en pesos y en dólares recibe dos liquidaciones: si la previsualización dice que tiene pendientes en la otra
@@ -99,9 +101,10 @@ export function LiquidacionNueva() {
 
   // La otra moneda en la que este propietario también tiene movimientos sin liquidar (si la hay).
   const otraMoneda = vista?.monedas_con_pendientes.find((m) => m !== vista.moneda) ?? null
-  const sinMovimientos = vista !== null && vista.items.length === 0
+  // El saldo deudor anterior no es un movimiento: sin cobros ni gastos nuevos no hay liquidación.
+  const sinMovimientos = vista !== null && vista.items.every((i) => i.tipo === 'saldo')
   const netoNegativo = vista !== null && esNegativo(vista.neto)
-  const puedeEmitir = vista !== null && !sinMovimientos && !netoNegativo && !emitiendo
+  const puedeEmitir = vista !== null && !sinMovimientos && !emitiendo
 
   return (
     <div className="space-y-3">
@@ -119,8 +122,8 @@ export function LiquidacionNueva() {
         Nueva liquidación
       </TituloPantalla>
       <p className="text-sm text-muted-foreground">
-        Lo cobrado a favor del propietario, menos los gastos que se le cargaron, menos la comisión de administración. Previsualizá primero:
-        no se escribe nada hasta que emitas.
+        Lo cobrado a favor del propietario, menos los gastos que se le cargaron, menos la comisión de administración y menos el saldo deudor
+        de una liquidación anterior, si lo hay. Previsualizá primero: no se escribe nada hasta que emitas.
       </p>
 
       <Card>
@@ -229,10 +232,10 @@ export function LiquidacionNueva() {
                 <ItemsDeLiquidacion items={vista.items} moneda={vista.moneda} />
               </>
             )}
-            {netoNegativo && (
-              <p role="alert" className="text-sm text-destructive">
-                Los gastos y la comisión superan lo cobrado ({pesos(vista.neto, vista.moneda)}): no se emite una liquidación con neto negativo. La deuda
-                del propietario con la inmobiliaria todavía no tiene una regla para llevarla a la liquidación siguiente.
+            {netoNegativo && !sinMovimientos && (
+              <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                Los gastos y la comisión superan lo cobrado: el neto es {pesos(vista.neto, vista.moneda)}. Se va a emitir con saldo deudor: no se
+                paga, y ese saldo pasa a la próxima liquidación de {vista.propietario_nombre} en {nombreDeMoneda(vista.moneda)}, que lo descuenta.
               </p>
             )}
             {!sinMovimientos && (
@@ -261,7 +264,9 @@ export function LiquidacionNueva() {
         title="¿Emitir la liquidación?"
         description={
           vista
-            ? `Neto a pagar a ${vista.propietario_nombre}: ${pesos(vista.neto, vista.moneda)}. Los movimientos quedan liquidados y se carga la comisión (${pesos(vista.comision, vista.moneda)}) en su cuenta. Si te equivocás, una liquidación emitida y sin pagar se puede anular.`
+            ? netoNegativo
+              ? `Saldo deudor de ${vista.propietario_nombre}: ${pesos(vista.neto, vista.moneda)}. Los movimientos quedan liquidados y se carga la comisión (${pesos(vista.comision, vista.moneda)}) en su cuenta. La liquidación no se paga: su saldo se descuenta en la próxima del propietario en ${nombreDeMoneda(vista.moneda)}. Si te equivocás, se puede anular mientras esa no lo haya descontado.`
+              : `Neto a pagar a ${vista.propietario_nombre}: ${pesos(vista.neto, vista.moneda)}. Los movimientos quedan liquidados y se carga la comisión (${pesos(vista.comision, vista.moneda)}) en su cuenta. Si te equivocás, una liquidación emitida y sin pagar se puede anular.`
             : undefined
         }
         confirmLabel="Emitir liquidación"

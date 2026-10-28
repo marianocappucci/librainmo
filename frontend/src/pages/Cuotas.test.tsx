@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Cuotas } from './Cuotas'
-import { CONTRATO, CUOTA_ANULADA, CUOTA_COBRADA, CUOTA_EN_DOLARES, CUOTA_PENDIENTE } from '@/test/datos'
+import { CONTRATO, CUOTA_ANULADA, CUOTA_COBRADA, CUOTA_CON_PAGOS_A_CUENTA, CUOTA_EN_DOLARES, CUOTA_PENDIENTE } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -36,6 +36,20 @@ describe('Cuotas — la moneda', () => {
 
     expect(await screen.findByText('US$ 1.200,00')).toBeInTheDocument()
     expect(screen.getByText('$ 462.500,50')).toBeInTheDocument()
+  })
+})
+
+describe('Cuotas — pagos a cuenta (ADR-010)', () => {
+  it('🔴 una pendiente con pagos a cuenta dice cuánto le falta; una sin pagos, una cobrada y una anulada no dicen saldo', async () => {
+    base([CUOTA_CON_PAGOS_A_CUENTA, { ...CUOTA_PENDIENTE, periodo_desde: '2026-12-01' }, CUOTA_COBRADA, CUOTA_ANULADA])
+    montar()
+
+    const conSaldo = (await screen.findByText('· saldo $ 162.500,50')).closest('tr') as HTMLElement
+    expect(conSaldo).toHaveTextContent('Pendiente')
+    // El total sigue siendo el de la cuota; el saldo es aparte.
+    expect(conSaldo).toHaveTextContent('$ 462.500,50')
+    expect(screen.getAllByText('$ 462.500,50')).toHaveLength(4)
+    expect(screen.getAllByText(/· saldo/)).toHaveLength(1)
   })
 })
 

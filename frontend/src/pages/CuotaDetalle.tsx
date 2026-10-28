@@ -16,13 +16,14 @@ import { TituloPantalla } from 'libra-ui/titulo-pantalla'
 import { Dato } from '@/components/Dato'
 import { DialogoDeCargo } from '@/components/DialogoDeCargo'
 import { DialogoDeMotivo } from '@/components/DialogoDeMotivo'
-import { Anulado, EstadoDeCuota } from '@/components/Estados'
+import { Anulado, EstadoDeCuotaConSaldo } from '@/components/Estados'
 import { AvisoDeError } from '@/components/listado'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cobros, contratos, cuotas, mensajeDeError } from '@/lib/api'
 import type { ConceptoDelContrato, Cobro, Cuota } from '@/lib/api'
+import { conPagosACuenta } from '@/lib/dominio'
 import { fecha, nombreDelMes } from '@/lib/fechas'
 import { pesos } from '@/lib/importes'
 
@@ -30,7 +31,8 @@ export function CuotaDetalle() {
   const { id } = useParams()
   const [cuota, setCuota] = useState<Cuota | null>(null)
   const [conceptos, setConceptos] = useState<ConceptoDelContrato[]>([])
-  const [cobro, setCobro] = useState<Cobro | null>(null)
+  // Los cobros vivos de la cuota (si se pudieron traer): el último es el que enlaza una cobrada; todos, la lista de pagos a cuenta.
+  const [losCobros, setLosCobros] = useState<Cobro[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
   const [anulando, setAnulando] = useState(false)
@@ -41,18 +43,18 @@ export function CuotaDetalle() {
       .then(async (q) => {
         setCuota(q)
         setError(null)
-        // El contrato da los conceptos para «Cargar un cargo»; el cobro, si ya se cobró, para enlazarlo. Si alguno falla, la ficha sigue
-        // siendo útil: se queda con lo que tiene. La moneda ya viene en la cuota.
+        // El contrato da los conceptos para «Cargar un cargo»; los cobros, si ya se cobró algo, para enlazarlos y mostrar su fecha. Si alguno
+        // falla, la ficha sigue siendo útil: se queda con lo que tiene. La moneda ya viene en la cuota.
         try {
           const c = await contratos.obtener(q.contrato_id)
           setConceptos(c.conceptos)
         } catch {
           /* la ficha no depende de esto */
         }
-        if (q.estado === 'cobrada') {
+        if (q.estado === 'cobrada' || q.cobros.length > 0) {
           try {
             const lista = await cobros.listar({ contrato_id: q.contrato_id })
-            setCobro(lista.find((x) => x.cuota_id === q.id && !x.anulado) ?? null)
+            setLosCobros(lista.filter((x) => x.cuota_id === q.id && !x.anulado))
           } catch {
             /* idem */
           }
@@ -63,7 +65,7 @@ export function CuotaDetalle() {
 
   useEffect(() => {
     setCuota(null)
-    setCobro(null)
+    setLosCobros([])
     cargar()
   }, [cargar])
 
@@ -90,6 +92,11 @@ export function CuotaDetalle() {
 
   const pendiente = cuota.estado === 'pendiente'
   const moneda = cuota.moneda
+  const conPagos = conPagosACuenta(cuota)
+  // El cobro que enlaza una cobrada: el último vivo que dice la cuota (`cobro_id`) y, si no vino en la lista, el más nuevo de ella.
+  const cobro = losCobros.find((x) => x.id === cuota.cobro_id) ?? losCobros.at(-1) ?? null
+  // Los pagos se listan en una pendiente con pagos a cuenta y en una cobrada que se cobró en partes; con un solo cobro basta el enlace.
+  const conVariosPagos = cuota.cobros.length > 0 && (pendiente || cuota.cobros.length > 1)
 
   return (
     <div className="space-y-3">
@@ -119,7 +126,7 @@ export function CuotaDetalle() {
       </TituloPantalla>
       <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {cuota.numero_contrato} · {cuota.inquilino_nombre}
-        <EstadoDeCuota estado={cuota.estado} />
+        <EstadoDeCuotaConSaldo cuota={cuota} />
       </p>
 
       <AvisoDeError mensaje={error} />
@@ -145,8 +152,9 @@ export function CuotaDetalle() {
             <Dato etiqueta="Emitida">{fecha(cuota.fecha_emision)}</Dato>
             <Dato etiqueta="Vence">{fecha(cuota.fecha_vencimiento)}</Dato>
             <Dato etiqueta="Estado">
-              <EstadoDeCuota estado={cuota.estado} />
+              <EstadoDeCuotaConSaldo cuota={cuota} />
             </Dato>
+            {conPagos && <Dato etiqueta="Pagado a cuenta">{pesos(cuota.pagado, moneda)}</Dato>}
             {cuota.estado === 'cobrada' && (
               <Dato etiqueta="Cobro">
                 {cobro ? (
@@ -193,10 +201,60 @@ export function CuotaDetalle() {
                 <TableCell className="font-medium">Total</TableCell>
                 <TableCell className="text-right font-semibold">{pesos(cuota.total, moneda)}</TableCell>
               </TableRow>
+              {conPagos && (
+                <>
+                  <TableRow>
+                    <TableCell className="font-medium">Pagado a cuenta</TableCell>
+                    <TableCell className="text-right">{pesos(cuota.pagado, moneda)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="font-medium">Saldo</TableCell>
+                    <TableCell className="text-right font-semibold">{pesos(cuota.saldo, moneda)}</TableCell>
+                  </TableRow>
+                </>
+              )}
             </TableFooter>
           </Table>
         </CardContent>
       </Card>
+
+      {conVariosPagos && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pagos recibidos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Cada pago a cuenta va primero al punitorio adeudado y el resto a la cuota. Para anular uno, se anula primero el más nuevo.
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cobro</TableHead>
+                  <TableHead className="text-right">Aplicado a la cuota</TableHead>
+                  <TableHead className="text-right">Total cobrado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cuota.cobros.map((cid) => {
+                  const c = losCobros.find((x) => x.id === cid)
+                  return (
+                    <TableRow key={cid}>
+                      <TableCell>
+                        <Link to={`/cobros/${cid}`} className="underline underline-offset-4">
+                          {c ? `Cobro del ${fecha(c.fecha)}` : `Cobro ${cid}`}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right">{c ? pesos(c.importe_cuota, moneda) : ''}</TableCell>
+                      <TableCell className="text-right">{c ? pesos(c.total, moneda) : ''}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {cuota.gastos_del_propietario.length > 0 && (
         <Card>
@@ -251,7 +309,7 @@ export function CuotaDetalle() {
       <DialogoDeMotivo
         abierto={anulando}
         titulo={`Anular la cuota de ${nombreDelMes(cuota.periodo_desde)}`}
-        descripcion="Se contraasienta el cargo de la cuenta del inquilino y el mes se puede volver a generar. Sólo se anula una cuota pendiente."
+        descripcion={`Se contraasienta el cargo de la cuenta del inquilino y el mes se puede volver a generar. Sólo se anula una cuota pendiente${conPagos ? ' y, como ya tiene pagos a cuenta, antes hay que anularlos, empezando por el más nuevo' : ''}.`}
         confirmar="Anular cuota"
         onCerrar={() => setAnulando(false)}
         onConfirmar={async (motivo) => {

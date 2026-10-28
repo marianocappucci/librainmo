@@ -4,7 +4,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { LiquidacionDetalle } from './LiquidacionDetalle'
-import { LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA } from '@/test/datos'
+import {
+  LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_CON_SALDO_ANTERIOR, LIQUIDACION_DEUDORA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA,
+  LIQUIDACION_SALDADA,
+} from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Liquidacion } from '@/lib/api'
 
@@ -104,6 +107,83 @@ describe('Liquidación — los datos', () => {
     servirLiquidacion(LIQUIDACION_ANULADA)
     montar(LIQUIDACION_ANULADA)
     expect(await screen.findByText('Al anularla, sus movimientos quedaron libres para otra liquidación.')).toBeInTheDocument()
+  })
+})
+
+describe('Liquidación — con saldo deudor (ADR-011)', () => {
+  it('🔴 una deudora no ofrece «Pagar»: explica que el saldo se descuenta en la próxima, rotula el neto como saldo deudor y deja anular', async () => {
+    servirLiquidacion(LIQUIDACION_DEUDORA)
+    montar(LIQUIDACION_DEUDORA)
+    await screen.findByRole('heading', { name: 'L-000005' })
+
+    expect(boton('Registrar el pago')).not.toBeInTheDocument()
+    expect(boton('Anular')).toBeInTheDocument()
+    expect(screen.getAllByText('Con saldo deudor').length).toBeGreaterThan(0)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'neto de -$ 22.500,00): el propietario le debe ese saldo a la inmobiliaria. Esta liquidación no se paga: el saldo se descuenta en la próxima liquidación de Ana Inventada en pesos.',
+    )
+    expect(screen.getByText('Neto (saldo deudor)').nextSibling).toHaveTextContent('-$ 22.500,00')
+    expect(screen.queryByText('Neto a pagar')).not.toBeInTheDocument()
+  })
+
+  it('🔴 una deudora se puede anular: manda el motivo y queda anulada', async () => {
+    const user = userEvent.setup()
+    const api = servirLiquidacion(LIQUIDACION_DEUDORA)
+    api.responder('POST /api/liquidaciones/65/anular', json({ ...LIQUIDACION_ANULADA, id: 65, numero: 'L-000005' }))
+    montar(LIQUIDACION_DEUDORA)
+    await screen.findByRole('heading', { name: 'L-000005' })
+
+    await user.click(boton('Anular')!)
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByText(/Sólo se anula una emitida o con saldo deudor, y que no esté pagada ni saldada\./)).toBeInTheDocument()
+    await user.type(within(dialogo).getByLabelText('Motivo'), 'Faltaba un cobro')
+    await user.click(within(dialogo).getByRole('button', { name: 'Anular liquidación' }))
+    await waitFor(() => expect(api.de('POST', '/api/liquidaciones/65/anular')).toHaveLength(1))
+    expect(await screen.findByText('Al anularla, sus movimientos quedaron libres para otra liquidación.')).toBeInTheDocument()
+  })
+
+  it('🔴 una saldada sólo se mira: dice por cuál se saldó, con enlace a ella, y no ofrece pagar ni anular', async () => {
+    servirLiquidacion(LIQUIDACION_SALDADA)
+    montar(LIQUIDACION_SALDADA)
+    await screen.findByRole('heading', { name: 'L-000005' })
+
+    expect(boton('Registrar el pago')).not.toBeInTheDocument()
+    expect(boton('Anular')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Saldada').length).toBeGreaterThan(0)
+    expect(screen.getByText('Saldada por').nextSibling).toHaveTextContent('L-000006')
+    expect(within(screen.getByText('Saldada por').parentElement as HTMLElement).getByRole('link', { name: 'L-000006' })).toHaveAttribute('href', '/liquidaciones/66')
+    expect(screen.getByRole('status')).toHaveTextContent('Su saldo deudor ya se descontó en la liquidación L-000006. Para anularla, primero hay que anular esa.')
+  })
+
+  it('🔴 la que descontó una deuda muestra el «Saldo deudor anterior» y el ítem de saldo, con enlace a la deudora y sin contarlo como movimiento', async () => {
+    servirLiquidacion(LIQUIDACION_CON_SALDO_ANTERIOR)
+    montar(LIQUIDACION_CON_SALDO_ANTERIOR)
+    await screen.findByRole('heading', { name: 'L-000006' })
+
+    expect(screen.getByText('Saldo deudor anterior').nextSibling).toHaveTextContent('-$ 22.500,00')
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('$ 183.000,00')
+    const movimientos = screen.getByText('Movimientos liquidados').closest('[data-slot="card"]') as HTMLElement
+    const saldo = within(movimientos).getByRole('link', { name: 'Saldo deudor de la liquidación L-000005' })
+    expect(saldo).toHaveAttribute('href', '/liquidaciones/65')
+    expect(saldo.closest('tr')).toHaveTextContent('-$ 22.500,00')
+    expect(within(movimientos).getByText('2 movimientos')).toBeInTheDocument()
+  })
+
+  it('anular la que descontó la deuda avisa que la otra vuelve a quedar con saldo deudor', async () => {
+    const user = userEvent.setup()
+    servirLiquidacion(LIQUIDACION_CON_SALDO_ANTERIOR)
+    montar(LIQUIDACION_CON_SALDO_ANTERIOR)
+    await screen.findByRole('heading', { name: 'L-000006' })
+    await user.click(boton('Anular')!)
+    expect(await within(await screen.findByRole('dialog')).findByText(/esa vuelve a quedar con saldo deudor/)).toBeInTheDocument()
+  })
+
+  it('una liquidación común no muestra «Saldo deudor anterior» ni explicaciones de saldo', async () => {
+    servirLiquidacion(LIQUIDACION)
+    montar(LIQUIDACION)
+    await screen.findByRole('heading', { name: 'L-000001' })
+    expect(screen.queryByText('Saldo deudor anterior')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
 

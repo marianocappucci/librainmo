@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  ESTADOS_DE_CONTRATO, ESTADOS_DE_PROPIEDAD, ESTADOS_ELEGIBLES_DE_PROPIEDAD, METODOS_DE_AJUSTE, PERIODICIDADES, ROLES,
+  ESTADOS_DE_CONTRATO, ESTADOS_DE_LIQUIDACION, ESTADOS_DE_PROPIEDAD, ESTADOS_ELEGIBLES_DE_PROPIEDAD, conPagosACuenta, esPagoACuenta, METODOS_DE_AJUSTE, PERIODICIDADES, ROLES,
   TIPOS_DE_PROPIEDAD, CATEGORIAS_DE_GASTO, MEDIOS_DE_COBRO, MEDIOS_DE_PAGO_AL_PROPIETARIO, ESTADOS_DE_CUOTA, etiquetaDeMotivoDePrecio,
   tonoDeEstadoDeCuota, tonoDeEstadoDeLiquidacion, nombreDeMoneda, direccionCompleta, etiquetaDe, etiquetaDeRol, tonoDeEstadoDeContrato, tonoDeEstadoDePropiedad,
 } from './dominio'
@@ -63,6 +63,28 @@ describe('vocabulario de cuotas, cobros y liquidaciones (app/models/)', () => {
     expect(tonoDeEstadoDeCuota('anulada')).toBe('neutro')
     expect(tonoDeEstadoDeLiquidacion('emitida')).toBe('atencion')
     expect(tonoDeEstadoDeLiquidacion('pagada')).toBe('ok')
+  })
+
+  it('🔴 la liquidación con neto negativo (ADR-011) es «Con saldo deudor», y al descontarla la próxima queda «Saldada»', () => {
+    expect(ESTADOS_DE_LIQUIDACION.map((e) => [e.value, e.label])).toEqual([
+      ['emitida', 'Emitida'], ['pagada', 'Pagada'], ['deudora', 'Con saldo deudor'], ['saldada', 'Saldada'], ['anulada', 'Anulada'],
+    ])
+    expect(tonoDeEstadoDeLiquidacion('deudora')).toBe('negativo')
+    expect(tonoDeEstadoDeLiquidacion('saldada')).toBe('neutro')
+  })
+
+  it('🔴 es un pago a cuenta el que dice «Pago a cuenta» en el recibo o dejó punitorio sin cubrir; el que salda el resto de la cuota no (ADR-010)', () => {
+    expect(esPagoACuenta({ recibo: { concepto: 'Pago a cuenta del alquiler noviembre 2026, Avenida Ficticia 456 (C-000005), saldo pendiente 262500.50' }, punitorio_pendiente: '0.00' })).toBe(true)
+    expect(esPagoACuenta({ recibo: { concepto: 'Alquiler noviembre 2026, Avenida Ficticia 456 (C-000005)' }, punitorio_pendiente: '4250.01' })).toBe(true)
+    expect(esPagoACuenta({ recibo: { concepto: 'Alquiler noviembre 2026, Avenida Ficticia 456 (C-000005)' }, punitorio_pendiente: '0.00' })).toBe(false)
+    expect(esPagoACuenta({ recibo: null, punitorio_pendiente: '0.00' })).toBe(false)
+  })
+
+  it('🔴 sólo una cuota pendiente con cobros vivos tiene pagos a cuenta (ADR-010)', () => {
+    expect(conPagosACuenta({ estado: 'pendiente', cobros: [45] })).toBe(true)
+    expect(conPagosACuenta({ estado: 'pendiente', cobros: [] })).toBe(false)
+    expect(conPagosACuenta({ estado: 'cobrada', cobros: [40] })).toBe(false)
+    expect(conPagosACuenta({ estado: 'anulada', cobros: [] })).toBe(false)
   })
 
   it('la moneda en una frase: pesos o dólares (lo desconocido va como vino)', () => {

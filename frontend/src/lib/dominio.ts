@@ -6,6 +6,8 @@
  */
 import type { TonoEstado } from 'libra-ui/badge-estado'
 
+import { aCentesimas } from '@/lib/importes'
+
 // ── Roles y permisos (`app/roles.py`) ───────────────────────────────────
 
 export const ROLES = [
@@ -186,6 +188,19 @@ export function tonoDeEstadoDeCuota(estado: string): TonoEstado {
   }
 }
 
+/** ¿Es una cuota pendiente que ya recibió pagos a cuenta (ADR-010)? Sigue pendiente, pero lo que debe es su saldo y no su total. */
+export function conPagosACuenta(cuota: { estado: string; cobros: readonly number[] }): boolean {
+  return cuota.estado === 'pendiente' && cuota.cobros.length > 0
+}
+
+/**
+ * ¿Es un pago a cuenta (ADR-010)? Lo es el que dejó la cuota con saldo, y el servidor lo dice en el concepto del recibo («Pago a cuenta del
+ * alquiler …»); también el que no cubrió todo el punitorio adeudado. El que salda la cuota entera es un cobro común, aunque no sea el primero.
+ */
+export function esPagoACuenta(cobro: { recibo: { concepto: string } | null; punitorio_pendiente: string }): boolean {
+  return (cobro.recibo?.concepto.startsWith('Pago a cuenta') ?? false) || (aCentesimas(cobro.punitorio_pendiente) ?? 0) > 0
+}
+
 /**
  * Con qué puede pagar un inquilino: los medios de `libracore.medios_pago.ELEGIBLES` menos «cuenta corriente» (el cobro es justamente lo
  * que salda la cuenta). 🟡 Copia a mano: el backend de LibraInmo no tiene un endpoint que los sirva (los de la familia, `GET
@@ -228,6 +243,9 @@ export const CATEGORIAS_DE_GASTO = [
 export const ESTADOS_DE_LIQUIDACION = [
   { value: 'emitida', label: 'Emitida' },
   { value: 'pagada', label: 'Pagada' },
+  // Neto negativo (ADR-011): el propietario le debe a la inmobiliaria. No se paga; la próxima liquidación en esa moneda la descuenta y la deja saldada.
+  { value: 'deudora', label: 'Con saldo deudor' },
+  { value: 'saldada', label: 'Saldada' },
   { value: 'anulada', label: 'Anulada' },
 ] as const satisfies readonly Opcion[]
 
@@ -235,6 +253,7 @@ export function tonoDeEstadoDeLiquidacion(estado: string): TonoEstado {
   switch (estado) {
     case 'emitida': return 'atencion'
     case 'pagada': return 'ok'
+    case 'deudora': return 'negativo'
     default: return 'neutro'
   }
 }

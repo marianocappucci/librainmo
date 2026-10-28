@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { LiquidacionNueva } from './LiquidacionNueva'
-import { CLIENTES, LIQUIDACION, PREVISUALIZACION_DE_LIQUIDACION } from '@/test/datos'
+import { CLIENTES, ITEM_DE_SALDO, ITEMS_DE_LIQUIDACION, LIQUIDACION, LIQUIDACION_DEUDORA, PREVISUALIZACION_DE_LIQUIDACION } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 import { hoyISO } from '@/lib/fechas'
@@ -209,15 +209,82 @@ describe('Nueva liquidación — la previsualización', () => {
     expect(screen.getByRole('button', { name: 'Emitir la liquidación' })).toBeDisabled()
   })
 
-  it('🔴 con neto negativo (los gastos y la comisión superan lo cobrado) lo explica y no deja emitir', async () => {
+  it('🔴 con neto negativo (los gastos y la comisión superan lo cobrado, ADR-011) avisa que se emite con saldo deudor que pasa a la próxima, y deja emitir', async () => {
     const user = userEvent.setup()
     const api = base()
     api.responder('GET /api/liquidaciones/previsualizar', json({ ...PREVISUALIZACION_DE_LIQUIDACION, cobrado: '10000.00', gastos: '51000.00', comision: '500.00', neto: '-41500.00' }))
     montar()
     await previsualizar(user)
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Los gastos y la comisión superan lo cobrado (-$ 41.500,00): no se emite una liquidación con neto negativo.')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Los gastos y la comisión superan lo cobrado: el neto es -$ 41.500,00. Se va a emitir con saldo deudor: no se paga, y ese saldo pasa a la próxima liquidación de Ana Inventada en pesos, que lo descuenta.',
+    )
+    expect(screen.getByText('Neto (saldo deudor)').nextSibling).toHaveTextContent('-$ 41.500,00')
+    // Ya no es un error ni un bloqueo.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/no se emite una liquidación con neto negativo/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Emitir la liquidación' })).toBeEnabled()
+  })
+
+  it('🔴 con neto negativo se emite: la confirmación habla de saldo deudor y no de pagar, y manda los mismos datos', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/liquidaciones/previsualizar', json({ ...PREVISUALIZACION_DE_LIQUIDACION, cobrado: '10000.00', gastos: '51000.00', comision: '500.00', neto: '-41500.00' }))
+    api.responder('POST /api/liquidaciones', json(LIQUIDACION_DEUDORA, 201))
+    montar()
+    await previsualizar(user)
+
+    await user.click(screen.getByRole('button', { name: 'Emitir la liquidación' }))
+    expect(await screen.findByText(/Saldo deudor de Ana Inventada: -\$ 41\.500,00/)).toBeInTheDocument()
+    expect(screen.getByText(/La liquidación no se paga: su saldo se descuenta en la próxima del propietario en pesos/)).toBeInTheDocument()
+    expect(screen.queryByText(/Neto a pagar a/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Emitir liquidación' }))
+
+    await waitFor(() => expect(api.de('POST', '/api/liquidaciones')).toHaveLength(1))
+    expect(api.de('POST', '/api/liquidaciones')[0].cuerpo).toMatchObject({ propietario_id: 1, moneda: 'ARS' })
+    expect(await screen.findByText('FICHA DE LA LIQUIDACIÓN')).toBeInTheDocument()
+  })
+
+  it('🔴 con el saldo deudor de una liquidación anterior muestra el «Saldo deudor anterior» y el ítem de saldo (con enlace), y deja emitir', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/liquidaciones/previsualizar', json({
+      ...PREVISUALIZACION_DE_LIQUIDACION,
+      items: [ITEM_DE_SALDO, ...ITEMS_DE_LIQUIDACION],
+      saldo_anterior: '-22500.00',
+      neto: '183000.00',
+    }))
+    montar()
+    await previsualizar(user)
+
+    expect(screen.getByText('Saldo deudor anterior').nextSibling).toHaveTextContent('-$ 22.500,00')
+    expect(screen.getByText('Neto a pagar').nextSibling).toHaveTextContent('$ 183.000,00')
+    const saldo = screen.getByRole('link', { name: 'Saldo deudor de la liquidación L-000005' })
+    expect(saldo).toHaveAttribute('href', '/liquidaciones/65')
+    expect(saldo.closest('tr')).toHaveTextContent('-$ 22.500,00')
+    expect(screen.getByText('2 movimientos')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Emitir la liquidación' })).toBeEnabled()
+  })
+
+  it('🔴 un saldo deudor anterior solo, sin cobros ni gastos nuevos, no es un movimiento: no hay nada que liquidar', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    api.responder('GET /api/liquidaciones/previsualizar', json({
+      ...PREVISUALIZACION_DE_LIQUIDACION,
+      items: [ITEM_DE_SALDO],
+      cobrado: '0.00',
+      gastos: '0.00',
+      comision: '0.00',
+      saldo_anterior: '-22500.00',
+      neto: '-22500.00',
+    }))
+    montar()
+    await previsualizar(user)
+
+    expect(screen.getByText('No hay movimientos sin liquidar en pesos para este propietario hasta esa fecha.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Emitir la liquidación' })).toBeDisabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('un error del servidor al previsualizar se muestra y no deja una vista a medias', async () => {

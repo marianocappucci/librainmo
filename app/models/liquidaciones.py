@@ -13,8 +13,10 @@ from app.models.contratos import MONEDAS
 from app.models.motor import cc_asientos, clients
 
 CATEGORIAS_GASTO = ("reparacion", "expensas_extraordinarias", "impuesto", "servicio", "honorarios", "otro")
-ESTADOS_LIQUIDACION = ("emitida", "pagada", "anulada")
-TIPOS_ITEM = ("cobro", "gasto")
+#: `deudora`: el neto dio negativo y la deuda pasa a la próxima liquidación del propietario, que la absorbe como un
+#: ítem `saldo` y la deja `saldada` (ADR-011).
+ESTADOS_LIQUIDACION = ("emitida", "pagada", "deudora", "saldada", "anulada")
+TIPOS_ITEM = ("cobro", "gasto", "saldo")
 
 
 class Gasto(ConTiempos, Base):
@@ -72,7 +74,9 @@ class Liquidacion(ConTiempos, Base):
     __tablename__ = "liquidaciones"
     __table_args__ = (
         CheckConstraint(en_lista("estado", ESTADOS_LIQUIDACION), name="estado"),
-        CheckConstraint("neto >= 0", name="neto"),
+        # Neto negativo sólo en una `deudora` (o en la `saldada` que fue deudora); una para pagar no baja de cero.
+        CheckConstraint("neto >= 0 OR estado IN ('deudora', 'saldada', 'anulada')", name="neto"),
+        CheckConstraint("saldo_anterior <= 0", name="saldo_anterior"),
         CheckConstraint(en_lista("moneda", MONEDAS), name="moneda"),
     )
 
@@ -90,6 +94,8 @@ class Liquidacion(ConTiempos, Base):
     cobrado: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     gastos: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     comision: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    #: La deuda de liquidaciones anteriores que absorbe esta (cero o negativa). `neto` ya la descuenta.
+    saldo_anterior: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     neto: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="emitida", index=True)
     asiento_comision_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey(cc_asientos.c.id,
@@ -101,21 +107,32 @@ class Liquidacion(ConTiempos, Base):
     observaciones: Mapped[str | None] = mapped_column(Text)
     usuario: Mapped[str] = mapped_column(String(150), nullable=False, default="Sistema")
 
-    items: Mapped[list[LiquidacionItem]] = relationship(cascade="all, delete-orphan", order_by="LiquidacionItem.id")
+    items: Mapped[list[LiquidacionItem]] = relationship(cascade="all, delete-orphan", order_by="LiquidacionItem.id",
+                                                        foreign_keys="LiquidacionItem.liquidacion_id")
 
 
 class LiquidacionItem(Base):
-    """Un movimiento de la cuenta del propietario que entró en la liquidación. Un asiento se liquida una sola vez."""
+    """Un movimiento de la cuenta del propietario que entró en la liquidación. Un asiento se liquida una sola vez.
+
+    El ítem `saldo` no tiene asiento: es la deuda de una liquidación `deudora` anterior (`liquidacion_origen_id`), que
+    ya está en el libro como la diferencia entre sus haberes y sus cargos (ADR-011)."""
 
     __tablename__ = "liquidacion_items"
-    __table_args__ = (CheckConstraint(en_lista("tipo", TIPOS_ITEM), name="tipo"),)
+    __table_args__ = (
+        CheckConstraint(en_lista("tipo", TIPOS_ITEM), name="tipo"),
+        CheckConstraint("(tipo = 'saldo') = (asiento_id IS NULL) AND (tipo = 'saldo') = "
+                        "(liquidacion_origen_id IS NOT NULL)", name="saldo"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     liquidacion_id: Mapped[int] = mapped_column(ForeignKey("liquidaciones.id", ondelete="CASCADE"), nullable=False,
                                                 index=True)
     #: 🔑 Único: es lo que impide liquidar dos veces el mismo cobro o el mismo gasto.
-    asiento_id: Mapped[int] = mapped_column(BigInteger, ForeignKey(cc_asientos.c.id, ondelete="RESTRICT"),
-                                            nullable=False, unique=True)
+    asiento_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey(cc_asientos.c.id, ondelete="RESTRICT"),
+                                                   unique=True)
+    #: 🔑 Único: una deuda se arrastra una sola vez.
+    liquidacion_origen_id: Mapped[int | None] = mapped_column(ForeignKey("liquidaciones.id", ondelete="RESTRICT"),
+                                                              unique=True)
     tipo: Mapped[str] = mapped_column(String(10), nullable=False)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     descripcion: Mapped[str] = mapped_column(String(200), nullable=False)

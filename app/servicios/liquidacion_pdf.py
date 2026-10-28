@@ -63,11 +63,16 @@ def generar(liq: dict) -> bytes:
         pdf.cell(116, 6, _latin1(x["descripcion"])[:80])
         pdf.cell(0, 6, _latin1(_plata(x["importe"], moneda)), align="R", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
-    for etiqueta, valor, negrita in (("Cobrado", liq["cobrado"], False),
-                                     ("Gastos", f"-{liq['gastos']}" if Decimal(liq["gastos"]) else "0", False),
-                                     ("Comisión de administración",
-                                      f"-{liq['comision']}" if Decimal(liq["comision"]) else "0", False),
-                                     ("Neto a cobrar", liq["neto"], True)):
+    deudora = Decimal(liq["neto"]) < 0
+    filas = [("Cobrado", liq["cobrado"], False),
+             ("Gastos", f"-{liq['gastos']}" if Decimal(liq["gastos"]) else "0", False),
+             ("Comisión de administración", f"-{liq['comision']}" if Decimal(liq["comision"]) else "0", False)]
+    if Decimal(liq.get("saldo_anterior") or 0):
+        filas.append(("Saldo deudor anterior", liq["saldo_anterior"], False))
+    # Con neto negativo no hay nada que cobrar: es lo que el propietario debe y se descuenta en la próxima (ADR-011).
+    filas.append(("Saldo deudor (se descuenta en la próxima liquidación)", liq["neto"], True) if deudora
+                 else ("Neto a cobrar", liq["neto"], True))
+    for etiqueta, valor, negrita in filas:
         pdf.set_font("Helvetica", "B" if negrita else "", 10)
         pdf.cell(140, 7, _latin1(etiqueta), align="R")
         pdf.cell(0, 7, _latin1(_plata(valor, moneda)), align="R", new_x="LMARGIN", new_y="NEXT")

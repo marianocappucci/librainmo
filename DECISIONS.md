@@ -125,7 +125,7 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
 
 **Decisión.**
 1. **Se cobra la cuota entera** más el punitorio. El pago parcial queda afuera: repartir un pago a cuenta entre
-   alquiler, conceptos y titulares pide reglas de imputación que el piloto todavía no definió.
+   alquiler, conceptos y titulares pide reglas de imputación que el piloto todavía no definió. *(Superado por ADR-010.)*
 2. **El punitorio es la cuenta del motor** (`libracore.mora.calcular_punitorio`): interés simple desde el vencimiento,
    con la gracia del contrato y el vencimiento corrido al día hábil. Se puede **condonar** y queda cuánto era.
 3. **La inmobiliaria cobra como mandataria.** Haber del inquilino por el total; haber de cada titular por su parte del
@@ -152,7 +152,7 @@ alquila. Diseño: `wiki/analyses/inmobiliaria-administracion-alquileres-diseno.m
    aparte, se define con su contador antes de facturar (tanda 3).
 4. **El pago del neto** (transferencia, efectivo o cheque) es otro cargo: la cuenta queda en cero por lo liquidado.
 5. **No se emite con neto negativo**: la deuda del propietario con la inmobiliaria y cómo se arrastra es una regla del
-   piloto que falta.
+   piloto que falta. *(Superado por ADR-011.)*
 6. **Fondos de terceros** (`GET /api/reportes/fondos-de-terceros`): lo que se les debe a los propietarios (tiene que
    estar en la cuenta de la inmobiliaria) y lo que deben los inquilinos, desde los saldos del libro del motor.
 
@@ -212,3 +212,48 @@ resto de la familia tiene, más el reset diario de la demo.
 **Consecuencias.** Una sola base: el `DROP SCHEMA` del reset se lleva `demo_codigos`, por eso el script los vuelca y los
 devuelve. La Configuración gana una pestaña «Integraciones» con solo el correo; ARCA y MercadoPago siguen sin declararse
 hasta que el producto monte sus routers.
+
+## ADR-010 — El pago a cuenta de una cuota: primero el punitorio, el resto en proporción
+
+**Estado:** aceptada (2026-10-28, decisión del humano). Supera el punto 1 de ADR-006.
+
+**Problema.** Un inquilino que paga menos que la cuota no se podía registrar: el cobro era de la cuota entera más el
+punitorio. Faltaba la regla de imputación de un pago a cuenta.
+
+**Qué ya existía.** El libro de terceros del motor (`cc_asientos`) ya acepta haberes parciales: el saldo del inquilino es
+la suma de sus asientos, sin importar cuántos. El punitorio es `libracore.mora.calcular_punitorio` (interés simple). El
+recibo del motor sale de cualquier asiento. No hacía falta tocar el motor.
+
+**Decisión.**
+1. `POST /api/cuotas/{id}/cobrar` acepta `importe` (opcional). Sin él se cobra todo lo adeudado, como antes.
+2. **Lo pagado va primero al punitorio adeudado** (como los intereses en el Código Civil, art. 903) y el resto a la
+   cuota, **en proporción entre el alquiler y los conceptos que falten**. El pago que cierra la cuota se lleva justo lo
+   que falta de cada tipo, así la cuota cierra al centavo. Cada tipo se reparte entre los titulares como en ADR-006.
+3. La cuota sigue `pendiente` con su `saldo` hasta que se paga entera. Una cuota con pagos a cuenta no se anula.
+4. **El punitorio corre sobre lo que falta**: después de un pago a cuenta, el interés del capital que quedó desde ese
+   pago (la diferencia de la cuenta del motor entre las dos fechas, exacta por ser interés simple) más lo que el pago
+   no cubrió (`cobros.punitorio_pendiente`). Condonar perdona todo lo adeudado, también lo arrastrado.
+5. Con varios pagos a cuenta **se anula el más nuevo primero**: cada uno calculó su punitorio sobre lo que dejó el
+   anterior. Un pago no puede tener fecha anterior al último.
+6. El recibo dice «Pago a cuenta del alquiler …, saldo pendiente N». Revisión `0007`.
+
+## ADR-011 — La liquidación con neto negativo se emite deudora y se descuenta en la próxima
+
+**Estado:** aceptada (2026-10-28, decisión del humano). Supera el punto 5 de ADR-007.
+
+**Problema.** Cuando los gastos y la comisión superan lo cobrado, la liquidación no se podía emitir: el propietario le
+debe a la inmobiliaria y no había cómo seguir.
+
+**Decisión.**
+1. Se emite con `estado = 'deudora'` y **no se paga**.
+2. La próxima liquidación del propietario en esa moneda la **absorbe** como un ítem `saldo` (descripción «Saldo deudor
+   de la liquidación L-…», importe negativo) y la deja `saldada`; `saldo_anterior` y `neto` lo reflejan. Si tampoco
+   alcanza, la nueva también es deudora y arrastra todo.
+3. **El ítem `saldo` no tiene asiento**: la deuda ya está en el libro como la diferencia entre los haberes y los cargos
+   del propietario, así que no se inventan asientos que se cancelan. Después de pagar el neto de la que absorbió, la
+   cuenta del propietario queda en cero. `liquidacion_items.liquidacion_origen_id` es único: una deuda se arrastra una
+   sola vez.
+4. Sólo la deuda, sin movimientos nuevos, no es una liquidación (409).
+5. Anular la que absorbió vuelve la otra a `deudora`; una `saldada` no se anula sin anular primero la que la absorbió.
+6. 🔴 Los ítems `saldo` quedan fuera de la subconsulta de asientos ya liquidados: un `NULL` adentro de `NOT IN` deja
+   afuera a todo. Revisión `0007`.

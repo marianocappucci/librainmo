@@ -394,6 +394,14 @@ export interface Cuota {
   dias_del_periodo: number
   total: string
   estado: string
+  /** El último cobro vivo de la cuota (con pagos a cuenta puede haber varios, ADR-010); `null` si no se cobró nada. */
+  cobro_id: number | null
+  /** Los cobros vivos de la cuota, del más viejo al más nuevo: un cobro anulado ya no figura. */
+  cobros: number[]
+  /** Lo ya pagado a cuenta de la cuota, sin el punitorio. */
+  pagado: string
+  /** Lo que falta de la cuota (`total` menos `pagado`), sin el punitorio. Una pendiente sin pagos tiene el `total` entero. */
+  saldo: string
   /** Lo que paga el propietario por cuenta de esta cuota, ya cargado como gasto. Una cuota sin ninguno lo trae vacío. */
   gastos_del_propietario: GastoDeLaCuota[]
   lineas: LineaDeCuota[]
@@ -480,14 +488,24 @@ export const cuotas = {
 /** Cuánto cobrar si paga ese día (`GET /api/cuotas/{id}/cobro`). */
 export interface PropuestaDeCobro {
   cuota_id: number
+  /** La moneda del contrato de la cuota. */
+  moneda: string
   fecha: string
+  /** El total original de la cuota (no lo que falta: eso es `saldo`). */
   importe_cuota: string
+  /** Lo ya pagado a cuenta de la cuota, sin el punitorio (ADR-010). */
+  pagado: string
+  /** Lo que falta de la cuota, sin el punitorio. */
+  saldo: string
+  /** El punitorio adeudado ese día, ya con `punitorio_arrastrado` adentro. */
   punitorio: string
+  /** El punitorio que un pago a cuenta anterior no alcanzó a cubrir y sigue corriendo. */
+  punitorio_arrastrado: string
   dias_de_atraso: number
   vencimiento: string
   /** El vencimiento corrido al día hábil siguiente, desde el que corre el punitorio. */
   vencimiento_efectivo: string
-  /** La cuota más el punitorio. */
+  /** Lo máximo que se puede cobrar ese día: el saldo de la cuota más el punitorio. */
   total: string
   punitorio_para: string
 }
@@ -524,9 +542,12 @@ export interface Cobro {
   inquilino_id: number
   inquilino_nombre: string | null
   fecha: string
+  /** Lo que este pago aplicó a la cuota: menos que ella en un pago a cuenta, y `"0.00"` si sólo alcanzó al punitorio. */
   importe_cuota: string
   punitorio: string
   punitorio_condonado: string
+  /** El punitorio adeudado que este pago dejó sin cubrir: sigue corriendo en el próximo (ADR-010). */
+  punitorio_pendiente: string
   dias_de_atraso: number
   total: string
   medios: MedioDeCobro[]
@@ -541,6 +562,8 @@ export interface CobroEntrada {
   fecha: string
   medios: { medio_pago: string; referencia: string | null; monto: string }[]
   condonar_punitorio: boolean
+  /** Un pago a cuenta (ADR-010): menos que lo adeudado. Sin él se cobra todo, y los medios tienen que sumar el `importe` o, sin él, el total. */
+  importe?: string
 }
 
 /** El PDF del recibo, para abrirlo en otra pestaña (`inline`): la cookie de sesión viaja sola. */
@@ -598,8 +621,12 @@ export const gastos = {
 // ── Liquidaciones y fondos de terceros ──────────────────────────────────
 
 export interface ItemDeLiquidacion {
-  asiento_id: number
-  tipo: 'cobro' | 'gasto'
+  /** El asiento del libro que se liquida; `null` en un ítem `saldo` (la deuda ya está en el libro). */
+  asiento_id: number | null
+  /** La liquidación deudora cuyo saldo absorbe un ítem `saldo` (ADR-011); `null` en los demás. */
+  liquidacion_origen_id: number | null
+  /** `saldo`: el saldo deudor de una liquidación anterior, con el importe negativo. */
+  tipo: 'cobro' | 'gasto' | 'saldo'
   fecha: string
   descripcion: string
   /** Positivo lo cobrado a favor del propietario; negativo lo que se le descuenta. */
@@ -614,6 +641,9 @@ export interface TotalesDeLiquidacion {
   cobrado: string
   gastos: string
   comision: string
+  /** Lo que el propietario le debía a la inmobiliaria de liquidaciones anteriores (ADR-011): cero o negativo. */
+  saldo_anterior: string
+  /** Cobrado menos gastos menos comisión más `saldo_anterior`; negativo, la liquidación sale `deudora`. */
   neto: string
 }
 
@@ -637,7 +667,10 @@ export interface Liquidacion extends TotalesDeLiquidacion {
   fecha: string
   hasta: string
   moneda: string
+  /** `emitida` | `pagada` | `deudora` (neto negativo, no se paga) | `saldada` (su deuda la descontó otra) | `anulada`. */
   estado: string
+  /** La liquidación que absorbió el saldo deudor de esta (sólo en una `saldada`); si no, `null`. */
+  saldada_por: { id: number; numero: string } | null
   fecha_pago: string | null
   medio_pago: string | null
   referencia_pago: string | null

@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Liquidaciones } from './Liquidaciones'
-import { CLIENTES, LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA } from '@/test/datos'
+import { CLIENTES, LIQUIDACION, LIQUIDACION_ANULADA, LIQUIDACION_DEUDORA, LIQUIDACION_EN_DOLARES, LIQUIDACION_PAGADA, LIQUIDACION_SALDADA } from '@/test/datos'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import { error, json, servidor } from '@/test/servidor'
 
@@ -36,6 +36,43 @@ describe('Liquidaciones — la moneda', () => {
     expect(screen.getByText('US$ 13.500,00')).toBeInTheDocument()
     expect(screen.getByText('US$ 205.500,00')).toBeInTheDocument()
     expect(screen.getByText('$ 205.500,00')).toBeInTheDocument()
+  })
+})
+
+describe('Liquidaciones — con saldo deudor (ADR-011)', () => {
+  it('🔴 una de neto negativo figura «Con saldo deudor» con su neto en negativo, y la que la siguiente descontó, «Saldada»', async () => {
+    base([LIQUIDACION, LIQUIDACION_DEUDORA, { ...LIQUIDACION_SALDADA, id: 67, numero: 'L-000007' }])
+    montar()
+
+    const deudora = (await screen.findByRole('link', { name: 'L-000005' })).closest('tr') as HTMLElement
+    expect(within(deudora).getByText('Con saldo deudor')).toBeInTheDocument()
+    expect(deudora).toHaveTextContent('-$ 22.500,00')
+    expect(within(screen.getByRole('link', { name: 'L-000007' }).closest('tr') as HTMLElement).getByText('Saldada')).toBeInTheDocument()
+  })
+
+  it('el filtro por estado ofrece los dos estados nuevos y manda el que se elige', async () => {
+    const user = userEvent.setup()
+    const api = base()
+    montar()
+    await screen.findByRole('link', { name: 'L-000001' })
+
+    await user.click(screen.getByRole('combobox', { name: 'Filtrar por estado' }))
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
+      'Todos los estados', 'Emitida', 'Pagada', 'Con saldo deudor', 'Saldada', 'Anulada',
+    ])
+    await user.click(screen.getByRole('option', { name: 'Con saldo deudor' }))
+    await waitFor(() => expect(api.de('GET', '/api/liquidaciones').at(-1)?.query.get('estado')).toBe('deudora'))
+  })
+
+  it('🔴 ordenar por neto pone los negativos antes que los positivos', async () => {
+    const user = userEvent.setup()
+    base([LIQUIDACION, LIQUIDACION_DEUDORA, LIQUIDACION_PAGADA])
+    montar()
+    await screen.findByRole('link', { name: 'L-000005' })
+
+    await user.click(screen.getByRole('button', { name: /Neto/ }))
+    const numeros = screen.getAllByRole('link', { name: /^L-/ }).map((a) => a.textContent)
+    expect(numeros[0]).toBe('L-000005')
   })
 })
 

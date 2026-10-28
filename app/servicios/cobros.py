@@ -2,11 +2,13 @@
 
 ## Las decisiones
 
-1. **Se cobra la cuota entera** (más el punitorio). El pago parcial queda para después: repartir un pago a cuenta
-   entre alquiler, conceptos y titulares pide reglas de imputación que la inmobiliaria todavía no dijo.
-2. **El punitorio es la cuenta del motor** (`libracore.mora.calcular_punitorio`): interés simple sobre la cuota, desde
-   el vencimiento, con los días de gracia del contrato y el vencimiento corrido al día hábil siguiente. Se puede
-   **condonar**, y queda la constancia de cuánto era.
+1. **Se cobra la cuota entera o a cuenta** (ADR-010, decisión del humano del 2026-10-28). Lo pagado va **primero al
+   punitorio adeudado** (como los intereses en el Código Civil) y el resto a la cuota, **en proporción** entre el
+   alquiler y los conceptos que falten. La cuota sigue `pendiente` con su saldo hasta que se paga entera.
+2. **El punitorio es la cuenta del motor** (`libracore.mora.calcular_punitorio`): interés simple sobre lo que falta de
+   la cuota, desde el vencimiento, con los días de gracia del contrato y el vencimiento corrido al día hábil siguiente.
+   Después de un pago a cuenta corre sólo sobre el capital que quedó, desde ese pago, más lo que el pago no cubrió
+   (`punitorio_pendiente`). Se puede **condonar** (todo lo adeudado), y queda la constancia de cuánto era.
 3. **La inmobiliaria cobra como mandataria**: el haber del inquilino es por el total, y a la cuenta de cada titular va
    su parte del alquiler y de los conceptos, según su porcentaje. El punitorio va al propietario sólo si el contrato
    lo dice (`punitorio_para`); si no, es de la inmobiliaria y no pasa por la cuenta de nadie.
@@ -15,7 +17,8 @@
    titulares, en la misma transacción que los asientos. Todo va **en la moneda del contrato** (ADR-088 del motor): un
    alquiler en dólares se cobra, se imputa y se recibe en dólares.
 6. **Anular un cobro** contraasienta todo, anula el recibo y deja la cuota otra vez pendiente, en una sola transacción
-   (`anular_recibo(conn=)`, libracore v1.197.1).
+   (`anular_recibo(conn=)`, libracore v1.197.1). Con varios pagos a cuenta se anula **el más nuevo primero**: cada uno
+   calculó su punitorio sobre lo que dejó el anterior.
 """
 
 from __future__ import annotations
@@ -60,6 +63,12 @@ def repartir(importe: Decimal, partes: list[tuple[int, Decimal]]) -> list[tuple[
     return resultado
 
 
+def vivos(sesion: Session, cuota_id: int) -> list[Cobro]:
+    """Los cobros no anulados de la cuota, del más viejo al más nuevo."""
+    return list(sesion.scalars(select(Cobro).where(Cobro.cuota_id == cuota_id, Cobro.anulado.is_(False))
+                               .order_by(Cobro.fecha, Cobro.id)))
+
+
 def _cuota_pendiente(sesion: Session, cuota_id: int) -> tuple[Cuota, Contrato, Propiedad]:
     q = sesion.get(Cuota, cuota_id)
     if q is None:
@@ -70,23 +79,50 @@ def _cuota_pendiente(sesion: Session, cuota_id: int) -> tuple[Cuota, Contrato, P
     return q, c, sesion.get(Propiedad, c.propiedad_id)
 
 
-def punitorio(c: Contrato, q: Cuota, fecha: date) -> dict:
-    """El punitorio de pagar `q` el día `fecha`, con su detalle. Sin tasa pactada, cero."""
-    if not c.punitorio_tasa:
-        return {"punitorio": CERO, "dias_de_atraso": max(0, (fecha - q.fecha_vencimiento).days), "detalle": None}
-    d = mora.calcular_punitorio(q.total, q.fecha_vencimiento, fecha, c.punitorio_tasa, base=c.punitorio_base,
-                                dias_gracia=c.dias_gracia)
-    return {"punitorio": Decimal(d["punitorio"]), "dias_de_atraso": d["dias_de_atraso"], "detalle": d}
+def _punitorio_sobre(c: Contrato, q: Cuota, base: Decimal, fecha: date) -> dict | None:
+    if not c.punitorio_tasa or base <= 0:
+        return None
+    return mora.calcular_punitorio(base, q.fecha_vencimiento, fecha, c.punitorio_tasa, base=c.punitorio_base,
+                                   dias_gracia=c.dias_gracia)
+
+
+def saldo(sesion: Session, q: Cuota) -> Decimal:
+    """Lo que falta pagar de la cuota, sin el punitorio."""
+    return q.total - sum((x.importe_cuota for x in vivos(sesion, q.id)), Decimal(0))
+
+
+def punitorio(sesion: Session, c: Contrato, q: Cuota, fecha: date) -> dict:
+    """El punitorio adeudado si paga `q` el día `fecha`, con su detalle. Sin tasa pactada, cero.
+
+    Sobre lo que falta de la cuota: el interés de ese capital desde el último pago a cuenta (o desde el vencimiento, si
+    no hubo), más lo que el último pago no cubrió. El interés es simple, así que la diferencia entre la cuenta del
+    motor a `fecha` y al último pago es justo lo que corrió entre los dos."""
+    anteriores = vivos(sesion, q.id)
+    capital = q.total - sum((x.importe_cuota for x in anteriores), Decimal(0))
+    ultimo = anteriores[-1] if anteriores else None
+    if ultimo and fecha < ultimo.fecha:
+        raise Invalido(f"Ya hay un pago a cuenta del {ultimo.fecha.strftime('%d-%m-%Y')}: el próximo no puede ser "
+                       "anterior.")
+    d = _punitorio_sobre(c, q, capital, fecha)
+    corrido = Decimal(d["punitorio"]) if d else CERO
+    if ultimo and d:
+        antes = _punitorio_sobre(c, q, capital, ultimo.fecha)
+        corrido -= Decimal(antes["punitorio"]) if antes else CERO
+    arrastre = ultimo.punitorio_pendiente if ultimo else CERO
+    return {"punitorio": arrastre + corrido, "arrastre": arrastre, "capital": capital,
+            "dias_de_atraso": d["dias_de_atraso"] if d else max(0, (fecha - q.fecha_vencimiento).days), "detalle": d}
 
 
 def proponer(sesion: Session, cuota_id: int, *, fecha: date) -> dict:
-    """Cuánto hay que cobrar si paga el día `fecha`. **No escribe nada.**"""
+    """Cuánto hay que cobrar si paga el día `fecha`, y cuánto lleva pagado. **No escribe nada.**"""
     q, c, _ = _cuota_pendiente(sesion, cuota_id)
-    p = punitorio(c, q, fecha)
-    return {"cuota_id": q.id, "fecha": fecha, "importe_cuota": texto(q.total), "punitorio": texto(p["punitorio"]),
+    p = punitorio(sesion, c, q, fecha)
+    return {"cuota_id": q.id, "fecha": fecha, "importe_cuota": texto(q.total),
+            "pagado": texto(q.total - p["capital"]), "saldo": texto(p["capital"]),
+            "punitorio": texto(p["punitorio"]), "punitorio_arrastrado": texto(p["arrastre"]),
             "dias_de_atraso": p["dias_de_atraso"], "vencimiento": q.fecha_vencimiento,
             "vencimiento_efectivo": p["detalle"]["vencimiento_efectivo"] if p["detalle"] else q.fecha_vencimiento,
-            "total": texto(q.total + p["punitorio"]), "punitorio_para": c.punitorio_para, "moneda": c.moneda}
+            "total": texto(p["capital"] + p["punitorio"]), "punitorio_para": c.punitorio_para, "moneda": c.moneda}
 
 
 def _validar_medios(medios: list[dict], total: Decimal) -> list[dict]:
@@ -107,8 +143,25 @@ def _validar_medios(medios: list[dict], total: Decimal) -> list[dict]:
     return limpios
 
 
+def _a_la_cuota_por_tipo(sesion: Session, q: Cuota, a_capital: Decimal, capital: Decimal) -> dict[str, Decimal]:
+    """`a_capital` entre el alquiler y los conceptos que faltan, en proporción a lo que falta de cada uno. El pago que
+    cierra la cuota se lleva justo lo que falta de cada tipo, así el total de la cuota cierra al centavo."""
+    pagado = {"alquiler": Decimal(0), "concepto": Decimal(0)}
+    for cobro in vivos(sesion, q.id):
+        for x in cobro.imputaciones:
+            if x.tipo in pagado:
+                pagado[x.tipo] += x.importe
+    falta = {t: sum((x.importe for x in q.lineas if x.tipo == t), Decimal(0)) - pagado[t] for t in pagado}
+    if a_capital == capital:
+        return falta
+    alquiler = (a_capital * falta["alquiler"] / capital).quantize(_CENTAVO, rounding=ROUND_HALF_UP)
+    return {"alquiler": alquiler, "concepto": a_capital - alquiler}
+
+
 def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], condonar_punitorio: bool = False,
-           usuario: str) -> dict:
+           importe: Decimal | None = None, usuario: str) -> dict:
+    """Cobra la cuota entera (sin `importe`) o un pago a cuenta de `importe`: primero el punitorio adeudado y el resto a
+    la cuota, en proporción entre alquiler y conceptos (ADR-010)."""
     q, c, p = _cuota_pendiente(sesion, cuota_id)
     if fecha < q.fecha_emision:
         raise Invalido("No se cobra una cuota antes de emitirla.")
@@ -116,10 +169,19 @@ def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], c
     if sum((x[1] for x in titulares), Decimal(0)) != Decimal(100):
         raise Conflicto("La propiedad no tiene sus titulares completos: no hay a quién imputarle el cobro.")
 
-    calculado = punitorio(c, q, fecha)
-    cobrado = CERO if condonar_punitorio else calculado["punitorio"]
-    total = q.total + cobrado
+    calculado = punitorio(sesion, c, q, fecha)
+    capital, adeudado = calculado["capital"], calculado["punitorio"]
+    a_pagar = CERO if condonar_punitorio else adeudado
+    maximo = capital + a_pagar
+    total = maximo if importe is None else Decimal(str(importe)).quantize(_CENTAVO)
+    if total <= 0:
+        raise Invalido("El pago tiene que ser mayor que cero.")
+    if total > maximo:
+        raise Invalido(f"El pago ({total}) supera lo que se debe de la cuota ({maximo}).")
     limpios = _validar_medios(medios, total)
+    cobrado = min(total, a_pagar)
+    a_capital = total - cobrado
+    parcial = a_capital < capital
 
     mes = nombre_del_mes(q.periodo_desde)
     direccion = " ".join(x for x in (p.direccion, p.unidad or "") if x)
@@ -129,15 +191,17 @@ def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], c
                                             concepto=f"Punitorio cuota {mes} {c.numero}", debe=cobrado,
                                             moneda=c.moneda)
     asiento = cuentas.asentar(sesion, fecha=fecha, tercero_id=c.inquilino_id, rol=cuentas.INQUILINO,
-                              concepto=f"Cobro cuota {mes} {c.numero}", haber=total, moneda=c.moneda)
+                              concepto=("Pago a cuenta" if parcial else "Cobro") + f" cuota {mes} {c.numero}",
+                              haber=total, moneda=c.moneda)
 
-    cobro = Cobro(cuota_id=q.id, fecha=fecha, importe_cuota=q.total, punitorio=cobrado,
-                  punitorio_condonado=calculado["punitorio"] - cobrado, dias_de_atraso=calculado["dias_de_atraso"],
+    condonado = adeudado if condonar_punitorio else CERO
+    cobro = Cobro(cuota_id=q.id, fecha=fecha, importe_cuota=a_capital, punitorio=cobrado,
+                  punitorio_condonado=condonado, punitorio_pendiente=adeudado - cobrado - condonado,
+                  dias_de_atraso=calculado["dias_de_atraso"],
                   total=total, asiento_id=asiento, asiento_punitorio_id=asiento_punitorio,
                   medios=json.dumps([{**m, "monto": str(m["monto"])} for m in limpios], ensure_ascii=False),
                   recibo_id=0, usuario=usuario)
-    por_tipo = {"alquiler": sum((x.importe for x in q.lineas if x.tipo == "alquiler"), Decimal(0)),
-                "concepto": sum((x.importe for x in q.lineas if x.tipo == "concepto"), Decimal(0)),
+    por_tipo = {**(_a_la_cuota_por_tipo(sesion, q, a_capital, capital) if a_capital > 0 else {}),
                 "punitorio": cobrado if c.punitorio_para == "propietario" else Decimal(0)}
     nombres = clientes.nombres(sesion, [x[0] for x in titulares])
     for tipo, importe in por_tipo.items():
@@ -155,12 +219,13 @@ def cobrar(sesion: Session, cuota_id: int, *, fecha: date, medios: list[dict], c
     recibo = recibos.emitir_recibo_de_asiento(
         asiento, pagos=[{"fecha": fecha.isoformat(), "medio_pago": m["medio_pago"], "referencia": m["referencia"],
                          "monto": float(m["monto"])} for m in limpios],
-        concepto=f"Alquiler {mes}, {direccion} ({c.numero})"
-                 + (f", con punitorio por {calculado['dias_de_atraso']} días" if cobrado > 0 else ""),
+        concepto=("Pago a cuenta del alquiler " if parcial else "Alquiler ") + f"{mes}, {direccion} ({c.numero})"
+                 + (f", con punitorio por {calculado['dias_de_atraso']} días" if cobrado > 0 else "")
+                 + (f", saldo pendiente {texto(capital - a_capital)}" if parcial else ""),
         por_cuenta_de=" y ".join(nombres.get(x[0], "") for x in titulares),
         conn=conexion_libracore(sesion.connection()))
     cobro.recibo_id = recibo["id"]
-    q.estado = "cobrada"
+    q.estado = "pendiente" if parcial else "cobrada"
     sesion.add(cobro)
     sesion.commit()
     return a_dict(sesion, cobro)
@@ -175,7 +240,8 @@ def a_dict(sesion: Session, cobro: Cobro) -> dict:
         "id": cobro.id, "cuota_id": q.id, "periodo_desde": q.periodo_desde, "contrato_id": c.id,
         "numero_contrato": c.numero, "inquilino_id": c.inquilino_id, "inquilino_nombre": nombres.get(c.inquilino_id),
         "fecha": cobro.fecha, "importe_cuota": texto(cobro.importe_cuota), "punitorio": texto(cobro.punitorio),
-        "punitorio_condonado": texto(cobro.punitorio_condonado), "dias_de_atraso": cobro.dias_de_atraso,
+        "punitorio_condonado": texto(cobro.punitorio_condonado),
+        "punitorio_pendiente": texto(cobro.punitorio_pendiente), "dias_de_atraso": cobro.dias_de_atraso,
         "total": texto(cobro.total), "moneda": c.moneda, "medios": json.loads(cobro.medios), "anulado": cobro.anulado,
         "motivo_anulacion": cobro.motivo_anulacion, "usuario": cobro.usuario,
         "recibo": {"id": recibo["id"], "numero": recibo["numero"], "punto_venta": recibo["punto_venta"],
@@ -221,6 +287,8 @@ def anular(sesion: Session, cobro_id: int, *, motivo: str, usuario: str) -> dict
     asientos = [x.asiento_id for x in cobro.imputaciones]
     if asientos and sesion.scalar(select(LiquidacionItem.id).where(LiquidacionItem.asiento_id.in_(asientos))):
         raise Conflicto("El cobro ya está en una liquidación al propietario: anulá primero la liquidación.")
+    if vivos(sesion, cobro.cuota_id)[-1].id != cobro.id:
+        raise Conflicto("La cuota tiene un pago a cuenta posterior: anulá primero el más nuevo.")
     q = sesion.get(Cuota, cobro.cuota_id)
     concepto = f"Anulación del cobro {cobro.id}: {motivo.strip()}"
     for asiento in [cobro.asiento_id, cobro.asiento_punitorio_id, *(x.asiento_id for x in cobro.imputaciones)]:

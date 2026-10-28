@@ -9,9 +9,11 @@
    la comisión lleva IVA aparte, es una decisión a cerrar con su contador antes de facturarla.
 3. **La comisión es un cargo en la cuenta del propietario**, y el pago del neto otro: después de pagar, la cuenta
    queda en cero por lo liquidado.
-4. **No se emite con neto negativo** (gastos mayores que lo cobrado): la diferencia es plata que el propietario le
-   debe a la inmobiliaria, y llevarla a la liquidación siguiente es una regla que el piloto todavía no definió.
-5. **Anular** una liquidación emitida (no pagada) contraasienta la comisión y libera sus movimientos para otra.
+4. **Con neto negativo se emite `deudora`** (ADR-011, decisión del humano del 2026-10-28): lo que el propietario le
+   debe a la inmobiliaria **se arrastra a su próxima liquidación** en esa moneda, que lo descuenta como un ítem
+   `saldo` (sin asiento: la deuda ya está en el libro) y la deja `saldada`. Una deudora no se paga.
+5. **Anular** una liquidación emitida o deudora (no pagada ni saldada) contraasienta la comisión y libera sus
+   movimientos para otra; si había absorbido la deuda de otra, esa vuelve a quedar `deudora`.
 6. 🔑 **Una liquidación es de una moneda** (ADR-088 del motor): entran los cobros de los contratos en esa moneda y los
    gastos en esa moneda, y la comisión y el pago se asientan en ella. Un propietario con contratos en pesos y en
    dólares recibe dos liquidaciones; la previsualización dice en qué monedas tiene movimientos sin liquidar.
@@ -41,7 +43,8 @@ MEDIOS_DE_PAGO = ("transferencia", "efectivo", "cheque")
 
 
 def _liquidados(sesion: Session) -> select:
-    return select(LiquidacionItem.asiento_id)
+    # 🔴 Sin los ítems `saldo` (asiento nulo): un NULL adentro de `NOT IN` deja afuera a todo.
+    return select(LiquidacionItem.asiento_id).where(LiquidacionItem.asiento_id.is_not(None))
 
 
 def _moneda(moneda: str) -> str:
@@ -82,6 +85,14 @@ def _pendientes(sesion: Session, propietario_id: int, hasta: date, moneda: str |
         items.append({"asiento_id": imp.asiento_id, "tipo": "gasto", "fecha": gasto.fecha,
                       "descripcion": f"Gasto: {gasto.descripcion}", "importe": -imp.importe, "base_comision": CERO,
                       "comision_pct": CERO, "moneda": gasto.moneda})
+    deudoras = select(Liquidacion).where(Liquidacion.propietario_id == propietario_id,
+                                         Liquidacion.estado == "deudora", Liquidacion.fecha <= hasta)
+    if moneda:
+        deudoras = deudoras.where(Liquidacion.moneda == moneda)
+    for liq in sesion.scalars(deudoras.order_by(Liquidacion.numero)):
+        items.append({"asiento_id": None, "liquidacion_origen_id": liq.id, "tipo": "saldo", "fecha": liq.fecha,
+                      "descripcion": f"Saldo deudor de la liquidación {liq.numero}", "importe": liq.neto,
+                      "base_comision": CERO, "comision_pct": CERO, "moneda": liq.moneda})
     return items
 
 
@@ -90,10 +101,13 @@ def _comision(item: dict) -> Decimal:
 
 
 def _totales(items: list[dict]) -> dict:
-    cobrado = sum((x["importe"] for x in items if x["importe"] > 0), Decimal(0))
-    gastos = -sum((x["importe"] for x in items if x["importe"] < 0), Decimal(0))
-    comision = sum((_comision(x) for x in items), Decimal(0))
-    return {"cobrado": cobrado, "gastos": gastos, "comision": comision, "neto": cobrado - gastos - comision}
+    movimientos = [x for x in items if x["tipo"] != "saldo"]
+    cobrado = sum((x["importe"] for x in movimientos if x["importe"] > 0), Decimal(0))
+    gastos = -sum((x["importe"] for x in movimientos if x["importe"] < 0), Decimal(0))
+    comision = sum((_comision(x) for x in movimientos), Decimal(0))
+    saldo_anterior = sum((x["importe"] for x in items if x["tipo"] == "saldo"), Decimal(0))
+    return {"cobrado": cobrado, "gastos": gastos, "comision": comision, "saldo_anterior": saldo_anterior,
+            "neto": cobrado - gastos - comision + saldo_anterior}
 
 
 def _item_json(x: dict) -> dict:
@@ -120,15 +134,26 @@ def previsualizar(sesion: Session, propietario_id: int, *, hasta: date, moneda: 
             **{k: texto(v) for k, v in t.items()}}
 
 
+def _saldada_por(sesion: Session, liq: Liquidacion) -> dict | None:
+    """La liquidación que absorbió la deuda de esta, si es una `saldada`."""
+    if liq.estado != "saldada":
+        return None
+    otra = sesion.scalar(select(Liquidacion).join(LiquidacionItem, LiquidacionItem.liquidacion_id == Liquidacion.id)
+                         .where(LiquidacionItem.liquidacion_origen_id == liq.id))
+    return {"id": otra.id, "numero": otra.numero} if otra else None
+
+
 def a_dict(sesion: Session, liq: Liquidacion) -> dict:
     return {"id": liq.id, "numero": liq.numero, "propietario_id": liq.propietario_id,
             "propietario_nombre": clientes.nombres(sesion, [liq.propietario_id]).get(liq.propietario_id),
             "fecha": liq.fecha, "hasta": liq.hasta, "moneda": liq.moneda, "cobrado": texto(liq.cobrado),
-            "gastos": texto(liq.gastos),
+            "gastos": texto(liq.gastos), "saldo_anterior": texto(liq.saldo_anterior),
             "comision": texto(liq.comision), "neto": texto(liq.neto), "estado": liq.estado,
+            "saldada_por": _saldada_por(sesion, liq),
             "fecha_pago": liq.fecha_pago, "medio_pago": liq.medio_pago, "referencia_pago": liq.referencia_pago,
             "observaciones": liq.observaciones, "usuario": liq.usuario,
-            "items": [{"asiento_id": x.asiento_id, "tipo": x.tipo, "fecha": x.fecha, "descripcion": x.descripcion,
+            "items": [{"asiento_id": x.asiento_id, "liquidacion_origen_id": x.liquidacion_origen_id, "tipo": x.tipo,
+                       "fecha": x.fecha, "descripcion": x.descripcion,
                        "importe": texto(x.importe), "base_comision": texto(x.base_comision),
                        "comision_pct": texto(x.comision_pct),
                        "comision": texto((x.base_comision * x.comision_pct / 100).quantize(_CENTAVO,
@@ -143,17 +168,18 @@ def emitir(sesion: Session, propietario_id: int, *, fecha: date, hasta: date, mo
     clientes.exigir(sesion, propietario_id, "propietario")
     moneda = _moneda(moneda)
     items = _pendientes(sesion, propietario_id, hasta, moneda)
-    if not items:
+    if not any(x["tipo"] != "saldo" for x in items):
         raise Conflicto(f"No hay movimientos sin liquidar en {moneda} para este propietario.")
     t = _totales(items)
-    if t["neto"] < 0:
-        raise Conflicto(f"Los gastos y la comisión superan lo cobrado por {texto(-t['neto'])}: no se emite una "
-                        "liquidación con neto negativo.")
     liq = Liquidacion(numero=numeracion.siguiente(sesion, Liquidacion.numero, "L-"), propietario_id=propietario_id,
                       fecha=fecha, hasta=hasta, moneda=moneda, cobrado=t["cobrado"], gastos=t["gastos"],
-                      comision=t["comision"], neto=t["neto"], estado="emitida", observaciones=observaciones,
+                      comision=t["comision"], saldo_anterior=t["saldo_anterior"], neto=t["neto"],
+                      estado="deudora" if t["neto"] < 0 else "emitida", observaciones=observaciones,
                       usuario=usuario)
     liq.items = [LiquidacionItem(**_sin_moneda(x)) for x in items]
+    for x in items:
+        if x["tipo"] == "saldo":
+            sesion.get(Liquidacion, x["liquidacion_origen_id"]).estado = "saldada"
     if t["comision"] > 0:
         liq.asiento_comision_id = cuentas.asentar(
             sesion, fecha=fecha, tercero_id=propietario_id, rol=cuentas.PROPIETARIO,
@@ -189,6 +215,8 @@ def buscar(sesion: Session, *, propietario_id: int | None = None, estado: str | 
 def pagar(sesion: Session, liquidacion_id: int, *, fecha: date, medio_pago: str, referencia: str | None = None) -> dict:
     """La transferencia (o el pago) del neto al propietario: un cargo en su cuenta por el neto."""
     liq = _obtener(sesion, liquidacion_id)
+    if liq.estado == "deudora":
+        raise Conflicto("La liquidación tiene saldo deudor: no se paga, se descuenta en la próxima del propietario.")
     if liq.estado != "emitida":
         raise Conflicto(f"La liquidación está {liq.estado}.")
     if medio_pago not in MEDIOS_DE_PAGO:
@@ -208,13 +236,18 @@ def pagar(sesion: Session, liquidacion_id: int, *, fecha: date, medio_pago: str,
 
 def anular(sesion: Session, liquidacion_id: int, *, motivo: str) -> dict:
     liq = _obtener(sesion, liquidacion_id)
-    if liq.estado != "emitida":
+    if liq.estado == "saldada":
+        raise Conflicto("La deuda de esta liquidación ya la descontó otra: anulá primero esa.")
+    if liq.estado not in ("emitida", "deudora"):
         raise Conflicto(f"La liquidación está {liq.estado}: sólo se anula una emitida sin pagar.")
     if not (motivo or "").strip():
         raise Invalido("Anular una liquidación pide un motivo.")
     if liq.asiento_comision_id:
         cuentas.contraasentar(sesion, liq.asiento_comision_id,
                               concepto=f"Anulación de la liquidación {liq.numero}: {motivo.strip()}")
+    for x in liq.items:
+        if x.liquidacion_origen_id:
+            sesion.get(Liquidacion, x.liquidacion_origen_id).estado = "deudora"
     liq.items.clear()
     liq.estado = "anulada"
     liq.observaciones = "\n".join(x for x in (liq.observaciones, f"Anulada: {motivo.strip()}") if x)

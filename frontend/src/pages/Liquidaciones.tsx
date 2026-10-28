@@ -1,6 +1,7 @@
 /**
  * Las liquidaciones a propietarios: el listado con sus filtros (propietario y estado). Emitir una es otra pantalla
- * (`/liquidaciones/nueva`): se previsualiza antes de escribir nada.
+ * (`/liquidaciones/nueva`): se previsualiza antes de escribir nada. Una con neto negativo figura «Con saldo deudor» (ADR-011) y, cuando la
+ * siguiente la descuenta, «Saldada».
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -20,7 +21,7 @@ import { LIMITE_DE_PAGINA_GRANDE, liquidaciones, mensajeDeError } from '@/lib/ap
 import type { Liquidacion } from '@/lib/api'
 import { ESTADOS_DE_LIQUIDACION } from '@/lib/dominio'
 import { fecha } from '@/lib/fechas'
-import { pesos } from '@/lib/importes'
+import { aCentesimas, esNegativo, pesos } from '@/lib/importes'
 
 /** «Todos»: el centinela de un filtro (un `Select` no admite el valor vacío). */
 const TODOS = '__todos__'
@@ -89,8 +90,8 @@ export function Liquidaciones() {
       { id: 'comision', header: 'Comisión', size: 140, cell: ({ row }) => pesos(row.original.comision, row.original.moneda) },
       {
         id: 'neto',
-        // La clave de orden es el texto con ceros a la izquierda: se ordena sin pasar el importe por `number`.
-        accessorFn: (l) => l.neto.padStart(20, '0'),
+        // La clave de orden son los centavos enteros con su signo (una liquidación con saldo deudor tiene el neto negativo): sin `float`.
+        accessorFn: (l) => (esNegativo(l.neto) ? -1 : 1) * (aCentesimas(l.neto.replace(/^-/, '')) ?? 0),
         header: sortableHeader('Neto'),
         size: 150,
         cell: ({ row }) => <span className="font-medium">{pesos(row.original.neto, row.original.moneda)}</span>,

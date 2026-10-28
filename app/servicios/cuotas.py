@@ -232,6 +232,9 @@ def generar(sesion: Session, ancla: date, *, contrato_ids: list[int] | None = No
 
 def a_dict(sesion: Session, q: Cuota) -> dict:
     c = sesion.get(Contrato, q.contrato_id)
+    cobros = list(sesion.scalars(select(Cobro).where(Cobro.cuota_id == q.id, Cobro.anulado.is_(False))
+                                 .order_by(Cobro.fecha, Cobro.id)))
+    pagado = sum((x.importe_cuota for x in cobros), Decimal(0))
     return {
         "id": q.id, "contrato_id": q.contrato_id, "numero_contrato": c.numero,
         "inquilino_id": c.inquilino_id, "inquilino_nombre": clientes.nombres(sesion, [c.inquilino_id]).get(
@@ -243,7 +246,9 @@ def a_dict(sesion: Session, q: Cuota) -> dict:
                                     "anulado": g.anulado}
                                    for g in sesion.scalars(select(Gasto).where(Gasto.cuota_id == q.id)
                                                            .order_by(Gasto.id))],
-        "cobro_id": sesion.scalar(select(Cobro.id).where(Cobro.cuota_id == q.id, Cobro.anulado.is_(False))),
+        # El último pago (con pagos a cuenta puede haber varios, ADR-010) y lo que falta.
+        "cobro_id": cobros[-1].id if cobros else None, "cobros": [x.id for x in cobros],
+        "pagado": texto(pagado), "saldo": texto(q.total - pagado),
         "lineas": [{"id": x.id, "tipo": x.tipo, "concepto_id": x.concepto_id, "descripcion": x.descripcion,
                     "importe": texto(x.importe)} for x in q.lineas],
     }
@@ -308,6 +313,8 @@ def anular(sesion: Session, cuota_id: int, *, motivo: str) -> dict:
         raise Conflicto(f"La cuota está {q.estado}: sólo se anula una pendiente.")
     if not (motivo or "").strip():
         raise Invalido("Anular una cuota pide un motivo.")
+    if sesion.scalar(select(Cobro.id).where(Cobro.cuota_id == q.id, Cobro.anulado.is_(False))):
+        raise Conflicto("La cuota tiene pagos a cuenta: anulalos primero.")
     c = sesion.get(Contrato, q.contrato_id)
     from app.servicios import gastos as servicio_gastos
 

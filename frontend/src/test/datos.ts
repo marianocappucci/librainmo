@@ -232,6 +232,10 @@ export const CUOTA_PENDIENTE: Cuota = {
   dias_del_periodo: 30,
   total: '462500.50',
   estado: 'pendiente',
+  cobro_id: null,
+  cobros: [],
+  pagado: '0.00',
+  saldo: '462500.50',
   gastos_del_propietario: [],
   lineas: [
     { id: 1, tipo: 'alquiler', concepto_id: null, descripcion: 'Alquiler noviembre 2026', importe: '450000.00' },
@@ -239,8 +243,28 @@ export const CUOTA_PENDIENTE: Cuota = {
   ],
 }
 
-export const CUOTA_COBRADA: Cuota = { ...CUOTA_PENDIENTE, id: 31, periodo_desde: '2026-10-01', periodo_hasta: '2026-10-31', estado: 'cobrada' }
+export const CUOTA_COBRADA: Cuota = {
+  ...CUOTA_PENDIENTE,
+  id: 31,
+  periodo_desde: '2026-10-01',
+  periodo_hasta: '2026-10-31',
+  estado: 'cobrada',
+  cobro_id: 42,
+  cobros: [42],
+  pagado: '462500.50',
+  saldo: '0.00',
+}
 export const CUOTA_ANULADA: Cuota = { ...CUOTA_PENDIENTE, id: 32, periodo_desde: '2026-09-01', periodo_hasta: '2026-09-30', estado: 'anulada' }
+
+/** Una cuota pendiente con dos pagos a cuenta (ADR-010): sigue pendiente y debe lo que falta. Los cobros son 45 y 46, el último es el vivo. */
+export const CUOTA_CON_PAGOS_A_CUENTA: Cuota = {
+  ...CUOTA_PENDIENTE,
+  id: 35,
+  cobro_id: 46,
+  cobros: [45, 46],
+  pagado: '300000.00',
+  saldo: '162500.50',
+}
 
 /** Una cuota de un contrato en dólares: sus importes se imprimen con `US$`. */
 export const CUOTA_EN_DOLARES: Cuota = {
@@ -344,9 +368,13 @@ export const PROPUESTA_EN_DOLARES_CON_TRAMOS: PropuestaDeCuota = {
 
 export const COBRO_EN_TERMINO: PropuestaDeCobro = {
   cuota_id: 30,
+  moneda: 'ARS',
   fecha: '2026-11-08',
   importe_cuota: '462500.50',
+  pagado: '0.00',
+  saldo: '462500.50',
   punitorio: '0.00',
+  punitorio_arrastrado: '0.00',
   dias_de_atraso: 0,
   vencimiento: '2026-11-10',
   vencimiento_efectivo: '2026-11-10',
@@ -362,6 +390,22 @@ export const COBRO_CON_PUNITORIO: PropuestaDeCobro = {
   total: '471750.51',
 }
 
+/**
+ * La propuesta de cobrar la cuota 35 el 2026-11-20 después de un pago a cuenta de $ 300.000,00 que dejó $ 1.000,00 de punitorio sin cubrir:
+ * el punitorio (arrastrado más lo corrido desde ese pago) está dentro del total, que es el saldo más el punitorio.
+ */
+export const COBRO_CON_PAGO_A_CUENTA: PropuestaDeCobro = {
+  ...COBRO_EN_TERMINO,
+  cuota_id: 35,
+  fecha: '2026-11-20',
+  pagado: '300000.00',
+  saldo: '162500.50',
+  punitorio: '3250.00',
+  punitorio_arrastrado: '1000.00',
+  dias_de_atraso: 10,
+  total: '165750.50',
+}
+
 export const COBRO: Cobro = {
   id: 40,
   moneda: 'ARS',
@@ -375,6 +419,7 @@ export const COBRO: Cobro = {
   importe_cuota: '462500.50',
   punitorio: '9250.01',
   punitorio_condonado: '0.00',
+  punitorio_pendiente: '0.00',
   dias_de_atraso: 4,
   total: '471750.51',
   medios: [
@@ -395,6 +440,25 @@ export const COBRO: Cobro = {
 
 /** Un cobro de una cuota en dólares: la moneda del cobro es la del contrato. */
 export const COBRO_EN_DOLARES: Cobro = { ...COBRO, id: 44, moneda: 'USD' }
+
+/** El primer pago a cuenta de la cuota 35 (en término, sin punitorio): $ 200.000,00 de $ 462.500,50. El recibo lo dice y la cuota queda con saldo. */
+export const COBRO_A_CUENTA: Cobro = {
+  ...COBRO,
+  id: 45,
+  cuota_id: 35,
+  importe_cuota: '200000.00',
+  punitorio: '0.00',
+  dias_de_atraso: 0,
+  total: '200000.00',
+  medios: [{ medio_pago: 'transferencia', referencia: 'OP-112233', monto: '200000.00' }],
+  recibo: {
+    id: 78,
+    numero: '00000013',
+    punto_venta: 1,
+    concepto: 'Pago a cuenta del alquiler noviembre 2026, Avenida Ficticia 456 (C-000005), saldo pendiente 262500.50',
+    anulado: false,
+  },
+}
 
 export const COBRO_ANULADO: Cobro = { ...COBRO, id: 41, anulado: true, motivo_anulacion: 'Se cobró dos veces (operador1)', recibo: { ...COBRO.recibo!, anulado: true } }
 
@@ -430,6 +494,7 @@ export const GASTO_EN_DOLARES: Gasto = { ...GASTO, id: 53, descripcion: 'Cambio 
 export const ITEMS_DE_LIQUIDACION = [
   {
     asiento_id: 101,
+    liquidacion_origen_id: null,
     tipo: 'cobro' as const,
     fecha: '2026-11-14',
     descripcion: 'Alquiler noviembre 2026 C-000005 (cobrado el 14-11-2026)',
@@ -440,6 +505,7 @@ export const ITEMS_DE_LIQUIDACION = [
   },
   {
     asiento_id: 102,
+    liquidacion_origen_id: null,
     tipo: 'gasto' as const,
     fecha: '2026-10-20',
     descripcion: 'Gasto: Cambio de la bomba de agua',
@@ -460,6 +526,7 @@ export const PREVISUALIZACION_DE_LIQUIDACION: PrevisualizacionDeLiquidacion = {
   cobrado: '270000.00',
   gastos: '51000.00',
   comision: '13500.00',
+  saldo_anterior: '0.00',
   neto: '205500.00',
 }
 
@@ -474,8 +541,10 @@ export const LIQUIDACION: Liquidacion = {
   cobrado: '270000.00',
   gastos: '51000.00',
   comision: '13500.00',
+  saldo_anterior: '0.00',
   neto: '205500.00',
   estado: 'emitida',
+  saldada_por: null,
   fecha_pago: null,
   medio_pago: null,
   referencia_pago: null,
@@ -498,6 +567,54 @@ export const LIQUIDACION_PAGADA: Liquidacion = {
 export const LIQUIDACION_EN_DOLARES: Liquidacion = { ...LIQUIDACION, id: 63, numero: 'L-000004', moneda: 'USD' }
 
 export const LIQUIDACION_ANULADA: Liquidacion = { ...LIQUIDACION, id: 62, numero: 'L-000003', estado: 'anulada', items: [] }
+
+/** Un ítem de saldo deudor (ADR-011): la deuda de la deudora L-000005 (su neto) que la liquidación siguiente absorbe. Sin asiento, con el importe negativo. */
+export const ITEM_DE_SALDO = {
+  asiento_id: null,
+  liquidacion_origen_id: 65,
+  tipo: 'saldo' as const,
+  fecha: '2026-10-31',
+  descripcion: 'Saldo deudor de la liquidación L-000005',
+  importe: '-22500.00',
+  base_comision: '0.00',
+  comision_pct: '0.00',
+  comision: '0.00',
+}
+
+/** Una liquidación con neto negativo: los gastos superan lo cobrado, el propietario le debe a la inmobiliaria y no se paga (ADR-011). */
+export const LIQUIDACION_DEUDORA: Liquidacion = {
+  ...LIQUIDACION,
+  id: 65,
+  numero: 'L-000005',
+  fecha: '2026-10-31',
+  hasta: '2026-10-31',
+  cobrado: '30000.00',
+  gastos: '51000.00',
+  comision: '1500.00',
+  neto: '-22500.00',
+  estado: 'deudora',
+  items: [
+    { ...ITEMS_DE_LIQUIDACION[0], importe: '30000.00', base_comision: '30000.00' },
+    { ...ITEMS_DE_LIQUIDACION[1] },
+  ],
+}
+
+/** La deudora ya absorbida por la L-000006: queda `saldada` y apunta a ella. */
+export const LIQUIDACION_SALDADA: Liquidacion = {
+  ...LIQUIDACION_DEUDORA,
+  estado: 'saldada',
+  saldada_por: { id: 66, numero: 'L-000006' },
+}
+
+/** La liquidación que absorbió el saldo deudor de la L-000005: lo descuenta como un ítem `saldo` y su neto ya lo lleva. */
+export const LIQUIDACION_CON_SALDO_ANTERIOR: Liquidacion = {
+  ...LIQUIDACION,
+  id: 66,
+  numero: 'L-000006',
+  saldo_anterior: '-22500.00',
+  neto: '183000.00',
+  items: [ITEM_DE_SALDO, ...ITEMS_DE_LIQUIDACION],
+}
 
 export const FONDOS: FondosDeTerceros = {
   a_pagar_a_propietarios: [

@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CobroDetalle } from './CobroDetalle'
-import { COBRO, COBRO_ANULADO, COBRO_EN_DOLARES } from '@/test/datos'
+import { COBRO, COBRO_ANULADO, COBRO_A_CUENTA, COBRO_EN_DOLARES } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Cobro } from '@/lib/api'
 
@@ -96,6 +96,49 @@ describe('Cobro — los datos', () => {
     servidor({ 'GET /api/cobros/99': error(404, 'El cobro no existe.') })
     montar({ ...COBRO, id: 99 })
     expect(await screen.findByRole('alert')).toHaveTextContent('El cobro no existe.')
+  })
+})
+
+describe('Cobro — pago a cuenta (ADR-010)', () => {
+  it('🔴 un pago a cuenta se marca, y lo que muestra de la cuota es lo que este pago aplicó (no el total de la cuota)', async () => {
+    servirCobro(COBRO_A_CUENTA)
+    montar(COBRO_A_CUENTA)
+    await screen.findByRole('heading', { name: 'Cobro del 14-11-2026' })
+
+    expect(screen.getByText('Pago a cuenta')).toBeInTheDocument()
+    const d = within(screen.getByText('Datos del cobro').closest('[data-slot="card"]') as HTMLElement)
+    expect(d.getByText('Aplicado a la cuota').nextSibling).toHaveTextContent('$ 200.000,00')
+    expect(d.queryByText('Importe de la cuota')).not.toBeInTheDocument()
+    expect(d.getByText('Total cobrado').nextSibling).toHaveTextContent('$ 200.000,00')
+    expect(d.getByText('Recibo').nextSibling).toHaveTextContent('Pago a cuenta del alquiler noviembre 2026')
+    expect(d.getByText('Recibo').nextSibling).toHaveTextContent('saldo pendiente 262500.50')
+    // Cubrió todo el punitorio: no hay pendiente.
+    expect(d.queryByText('Punitorio pendiente')).not.toBeInTheDocument()
+  })
+
+  it('🔴 si el pago no alcanzó para todo el punitorio, muestra cuánto quedó pendiente y que la cuota no recibió nada', async () => {
+    const soloPunitorio = { ...COBRO_A_CUENTA, importe_cuota: '0.00', punitorio: '5000.00', punitorio_pendiente: '4250.01', total: '5000.00' }
+    servirCobro(soloPunitorio)
+    montar(soloPunitorio)
+    await screen.findByRole('heading', { name: 'Cobro del 14-11-2026' })
+
+    const d = within(screen.getByText('Datos del cobro').closest('[data-slot="card"]') as HTMLElement)
+    expect(d.getByText('Punitorio pendiente').nextSibling).toHaveTextContent('$ 4.250,01')
+    expect(d.getByText('Punitorio pendiente').nextSibling).toHaveTextContent('se arrastra al próximo cobro')
+    expect(d.getByText('Aplicado a la cuota').nextSibling).toHaveTextContent('$ 0,00')
+  })
+
+  it.each([
+    ['común', COBRO],
+    // El que salda el resto de la cuota aplica menos que ella, pero su recibo ya no dice «a cuenta».
+    ['que salda el resto', { ...COBRO_A_CUENTA, id: 46, recibo: { ...COBRO_A_CUENTA.recibo!, concepto: 'Alquiler noviembre 2026, Avenida Ficticia 456 (C-000005)' } }],
+  ])('un cobro %s no es un pago a cuenta: ni marca, ni punitorio pendiente', async (_cual, cobro) => {
+    servirCobro(cobro)
+    montar(cobro)
+    await screen.findByRole('heading', { name: 'Cobro del 14-11-2026' })
+    expect(screen.queryByText('Pago a cuenta')).not.toBeInTheDocument()
+    expect(screen.getByText('Importe de la cuota')).toBeInTheDocument()
+    expect(screen.queryByText('Punitorio pendiente')).not.toBeInTheDocument()
   })
 })
 

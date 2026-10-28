@@ -5,6 +5,10 @@
  * si el contrato lo dice, el punitorio, repartidos por el porcentaje de cada titular. La ficha los agrupa por propietario con su
  * subtotal.
  *
+ * 🔑 **Pago a cuenta** (ADR-010): si la cuota quedó con saldo, la ficha lo marca («Pago a cuenta»). `Importe de la cuota` pasa a ser lo que este
+ * pago aplicó a la cuota (`Aplicado a la cuota`; puede ser cero si sólo alcanzó al punitorio) y, si el pago no cubrió todo el punitorio adeudado,
+ * se muestra el `Punitorio pendiente`, que se arrastra al próximo cobro. Lo que falta de la cuota se ve en su ficha.
+ *
  * Anular contraasienta todo, anula el recibo y deja la cuota otra vez pendiente. Si el cobro ya está en una liquidación, el servidor lo
  * rechaza (409) y el motivo se ve en el diálogo: primero hay que anular la liquidación.
  *
@@ -27,7 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cobros, mensajeDeError, urlDelRecibo } from '@/lib/api'
 import type { Cobro, ImputacionDeCobro } from '@/lib/api'
-import { MEDIOS_DE_COBRO, TIPOS_DE_IMPUTACION, etiquetaDe } from '@/lib/dominio'
+import { MEDIOS_DE_COBRO, TIPOS_DE_IMPUTACION, esPagoACuenta, etiquetaDe } from '@/lib/dominio'
 import { fecha, nombreDelMes } from '@/lib/fechas'
 import { aCentesimas, deCentesimas, pesos, sumarEnCentavos } from '@/lib/importes'
 
@@ -87,6 +91,8 @@ export function CobroDetalle() {
 
   const grupos = porPropietario(cobro.imputaciones)
   const reciboSinAnular = cobro.anulado && cobro.recibo !== null && !cobro.recibo.anulado
+  const aCuenta = esPagoACuenta(cobro)
+  const conPunitorioPendiente = aCentesimas(cobro.punitorio_pendiente) !== 0
 
   return (
     <div className="space-y-3">
@@ -117,6 +123,7 @@ export function CobroDetalle() {
       <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {cobro.numero_contrato} · {cobro.inquilino_nombre}
         {cobro.anulado ? <Anulado /> : <BadgeEstado tono="ok">Cobrado</BadgeEstado>}
+        {aCuenta && <BadgeEstado tono="atencion">Pago a cuenta</BadgeEstado>}
       </p>
 
       <AvisoDeError mensaje={error} />
@@ -150,7 +157,7 @@ export function CobroDetalle() {
             </Dato>
             <Dato etiqueta="Inquilino">{cobro.inquilino_nombre}</Dato>
             <Dato etiqueta="Cargado por">{cobro.usuario}</Dato>
-            <Dato etiqueta="Importe de la cuota">{pesos(cobro.importe_cuota, cobro.moneda)}</Dato>
+            <Dato etiqueta={aCuenta ? 'Aplicado a la cuota' : 'Importe de la cuota'}>{pesos(cobro.importe_cuota, cobro.moneda)}</Dato>
             <Dato etiqueta="Punitorio">
               {pesos(cobro.punitorio, cobro.moneda)}
               {cobro.dias_de_atraso > 0 && (
@@ -158,6 +165,12 @@ export function CobroDetalle() {
               )}
             </Dato>
             <Dato etiqueta="Punitorio condonado">{aCentesimas(cobro.punitorio_condonado) === 0 ? '' : pesos(cobro.punitorio_condonado, cobro.moneda)}</Dato>
+            {conPunitorioPendiente && (
+              <Dato etiqueta="Punitorio pendiente">
+                {pesos(cobro.punitorio_pendiente, cobro.moneda)}
+                <div className="text-xs text-muted-foreground">Este pago no lo cubrió: se arrastra al próximo cobro.</div>
+              </Dato>
+            )}
             <Dato etiqueta="Total cobrado">
               <strong>{pesos(cobro.total, cobro.moneda)}</strong>
             </Dato>

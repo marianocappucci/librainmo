@@ -5,7 +5,8 @@ Lo que se fija acá:
 - los medios de pago tienen que sumar el total;
 - el haber del inquilino salda su cuenta y cada titular recibe su parte (al centavo), con el punitorio si es suyo;
 - el recibo es del motor, «por cuenta y orden de» los titulares, y se imprime;
-- anular el cobro revierte todo y deja la cuota pendiente para volver a cobrarla.
+- anular el cobro revierte todo y deja la cuota pendiente para volver a cobrarla;
+- un pago a cuenta va primero al punitorio y el resto, en proporción, al alquiler y a los conceptos (ADR-010).
 """
 
 from __future__ import annotations
@@ -168,3 +169,112 @@ def test_la_cuota_trae_su_cobro_y_los_medios_salen_del_motor(admin, escena):
     assert admin.get(f"/api/cuotas/{q['id']}").json()["cobro_id"] == cobro["id"]
     medios = {m["clave"]: m["nombre"] for m in admin.get("/api/cobros/medios").json()}
     assert medios["efectivo"] == "Efectivo" and "cuenta_corriente" not in medios
+
+
+# --- Pago a cuenta (ADR-010, decisión del humano del 2026-10-28) ------------------------------------------------------
+
+
+def _cobrar(c, cuota, fecha, monto, **extra):
+    return c.post(f"/api/cuotas/{cuota}/cobrar", json={"fecha": fecha, "importe": monto, "medios": EFECTIVO(monto),
+                                                         **extra})
+
+
+def _punitorio(capital, fecha):
+    """La cuenta del motor con la tasa del contrato de la escena (0,1 % diario, 3 días de gracia, vence el 10)."""
+    from datetime import date
+
+    from libracore import mora
+
+    return Decimal(mora.calcular_punitorio(Decimal(capital), date(2026, 12, 10), date.fromisoformat(fecha),
+                                           Decimal("0.1"), base="diaria", dias_gracia=3)["punitorio"])
+
+
+def test_un_pago_a_cuenta_se_reparte_en_proporcion_y_deja_saldo(admin, escena):
+    q = _cuota(admin, "2026-11-05")
+    r = _cobrar(admin, q["id"], "2026-11-13", "100000")
+    assert r.status_code == 201, r.text
+    cobro = r.json()
+    # 100.000 de 305.000: 300/305 al alquiler y 5/305 al seguro, y cada uno 60/40 entre los titulares.
+    assert sorted((x["propietario_nombre"], x["tipo"], x["importe"]) for x in cobro["imputaciones"]) == [
+        ("Dueña Uno", "alquiler", "59016.40"), ("Dueña Uno", "concepto", "983.60"),
+        ("Dueño Dos", "alquiler", "39344.26"), ("Dueño Dos", "concepto", "655.74")]
+    assert cobro["recibo"]["concepto"].startswith("Pago a cuenta del alquiler noviembre 2026")
+    assert "saldo pendiente 205000.00" in cobro["recibo"]["concepto"]
+    cuota = admin.get(f"/api/cuotas/{q['id']}").json()
+    assert (cuota["estado"], cuota["pagado"], cuota["saldo"]) == ("pendiente", "100000.00", "205000.00")
+    assert _saldo(escena["inquilina"], "inquilino") == Decimal("205000")
+
+    p = admin.get(f"/api/cuotas/{q['id']}/cobro", params={"fecha": "2026-11-13"}).json()
+    assert (p["pagado"], p["saldo"], p["total"]) == ("100000.00", "205000.00", "205000.00")
+    # Sin importe se cobra lo que falta, y el que cierra la cuota se lleva justo lo que falta de cada tipo.
+    r = admin.post(f"/api/cuotas/{q['id']}/cobrar", json={"fecha": "2026-11-13", "medios": EFECTIVO("205000")})
+    assert r.status_code == 201, r.text
+    cuota = admin.get(f"/api/cuotas/{q['id']}").json()
+    assert (cuota["estado"], cuota["saldo"], len(cuota["cobros"])) == ("cobrada", "0.00", 2)
+    por_tipo = {}
+    for cobro_id in cuota["cobros"]:
+        for x in admin.get(f"/api/cobros/{cobro_id}").json()["imputaciones"]:
+            por_tipo[x["tipo"]] = por_tipo.get(x["tipo"], Decimal(0)) + Decimal(x["importe"])
+    assert por_tipo == {"alquiler": Decimal("300000"), "concepto": Decimal("5000")}
+    assert _saldo(escena["inquilina"], "inquilino") == 0
+    assert _saldo(escena["uno"], "propietario") == Decimal("-183000")
+
+
+def test_el_pago_a_cuenta_va_primero_al_punitorio_y_despues_corre_sobre_lo_que_falta(admin, escena):
+    q = _cuota(admin, "2026-12-05")
+    adeudado = _punitorio("305000", "2026-12-20")
+    assert 0 < adeudado < 50000
+    cobro = _cobrar(admin, q["id"], "2026-12-20", "50000").json()
+    assert (cobro["punitorio"], cobro["importe_cuota"], cobro["punitorio_pendiente"]) == (
+        f"{adeudado:.2f}", f"{Decimal(50000) - adeudado:.2f}", "0.00")
+    capital = Decimal(305000) - (Decimal(50000) - adeudado)
+    # Diez días después: el punitorio corre sólo sobre el capital que quedó, desde el pago.
+    p = admin.get(f"/api/cuotas/{q['id']}/cobro", params={"fecha": "2026-12-30"}).json()
+    esperado = _punitorio(capital, "2026-12-30") - _punitorio(capital, "2026-12-20")
+    assert (p["saldo"], p["punitorio"], p["punitorio_arrastrado"]) == (f"{capital:.2f}", f"{esperado:.2f}", "0.00")
+    assert p["total"] == f"{capital + esperado:.2f}"
+
+
+def test_un_pago_que_no_cubre_el_punitorio_lo_deja_para_el_proximo(admin, escena):
+    q = _cuota(admin, "2026-12-05")
+    adeudado = _punitorio("305000", "2026-12-20")
+    cobro = _cobrar(admin, q["id"], "2026-12-20", "1000").json()
+    assert (cobro["punitorio"], cobro["importe_cuota"]) == ("1000.00", "0.00")
+    assert cobro["punitorio_pendiente"] == f"{adeudado - 1000:.2f}"
+    # El punitorio es del propietario en este contrato: los 1.000 van 60/40.
+    assert sorted((x["tipo"], x["importe"]) for x in cobro["imputaciones"]) == [
+        ("punitorio", "400.00"), ("punitorio", "600.00")]
+    p = admin.get(f"/api/cuotas/{q['id']}/cobro", params={"fecha": "2026-12-20"}).json()
+    assert (p["saldo"], p["punitorio_arrastrado"], p["punitorio"]) == (
+        "305000.00", f"{adeudado - 1000:.2f}", f"{adeudado - 1000:.2f}")
+    # Condonar perdona todo lo adeudado, también lo arrastrado.
+    r = admin.post(f"/api/cuotas/{q['id']}/cobrar", json={"fecha": "2026-12-20", "condonar_punitorio": True,
+                                                          "medios": EFECTIVO("305000")})
+    assert r.status_code == 201, r.text
+    assert (r.json()["punitorio"], r.json()["punitorio_condonado"]) == ("0.00", f"{adeudado - 1000:.2f}")
+    assert admin.get(f"/api/cuotas/{q['id']}").json()["estado"] == "cobrada"
+
+
+def test_se_anula_el_pago_a_cuenta_mas_nuevo_primero(admin, escena):
+    q = _cuota(admin, "2026-11-05")
+    primero = _cobrar(admin, q["id"], "2026-11-12", "100000").json()
+    segundo = _cobrar(admin, q["id"], "2026-11-13", "50000").json()
+    r = admin.post(f"/api/cobros/{primero['id']}/anular", json={"motivo": "x"})
+    assert r.status_code == 409 and "más nuevo" in r.text
+    assert admin.post(f"/api/cuotas/{q['id']}/anular", json={"motivo": "x"}).status_code == 409
+    assert admin.post(f"/api/cobros/{segundo['id']}/anular", json={"motivo": "Se cargó dos veces"}).status_code == 200
+    cuota = admin.get(f"/api/cuotas/{q['id']}").json()
+    assert (cuota["estado"], cuota["saldo"], cuota["cobro_id"]) == ("pendiente", "205000.00", primero["id"])
+    assert admin.post(f"/api/cobros/{primero['id']}/anular", json={"motivo": "Error"}).status_code == 200
+    assert _saldo(escena["inquilina"], "inquilino") == Decimal("305000")
+    # Un pago a cuenta no puede ser anterior al último.
+    _cobrar(admin, q["id"], "2026-11-13", "1000")
+    assert _cobrar(admin, q["id"], "2026-11-12", "1000").status_code == 422
+
+
+@pytest.mark.parametrize("monto,medios", [("305000.01", "305000.01"), ("100000", "90000")])
+def test_un_pago_a_cuenta_no_supera_la_deuda_y_los_medios_suman_el_pago(admin, escena, monto, medios):
+    q = _cuota(admin, "2026-11-05")
+    r = admin.post(f"/api/cuotas/{q['id']}/cobrar", json={"fecha": "2026-11-13", "importe": monto,
+                                                          "medios": EFECTIVO(medios)})
+    assert r.status_code == 422, r.text

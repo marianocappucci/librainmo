@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CuotaDetalle } from './CuotaDetalle'
 import { elegirEnBuscable } from '@/test/select-buscable'
 import {
-  COBRO, CONCEPTOS_DEL_INQUILINO, CONTRATO_VIGENTE, CUOTA_ANULADA, CUOTA_CON_GASTOS_DEL_PROPIETARIO, CUOTA_COBRADA, CUOTA_EN_DOLARES,
-  CUOTA_PENDIENTE,
+  COBRO, COBRO_A_CUENTA, CONCEPTOS_DEL_INQUILINO, CONTRATO_VIGENTE, CUOTA_ANULADA, CUOTA_CON_GASTOS_DEL_PROPIETARIO,
+  CUOTA_CON_PAGOS_A_CUENTA, CUOTA_COBRADA, CUOTA_EN_DOLARES, CUOTA_PENDIENTE,
 } from '@/test/datos'
 import { error, json, servidor } from '@/test/servidor'
 import type { Cuota } from '@/lib/api'
@@ -222,6 +222,101 @@ describe('Cuota — cargar un cargo', () => {
     await user.type(within(dialogo).getByLabelText('Importe (ARS)'), '100')
     await user.click(within(dialogo).getByRole('button', { name: 'Cargar el cargo' }))
     expect(await within(dialogo).findByRole('alert')).toHaveTextContent('«Ordinarias» ya está en esta cuota.')
+  })
+})
+
+// Los dos pagos a cuenta de la cuota 35 ($ 200.000,00 y $ 100.000,00) y uno anulado, que no figura entre los cobros de la cuota.
+const COBROS_A_CUENTA = [
+  COBRO_A_CUENTA,
+  { ...COBRO_A_CUENTA, id: 46, fecha: '2026-11-20', importe_cuota: '100000.00', total: '103250.00' },
+  { ...COBRO_A_CUENTA, id: 47, anulado: true },
+]
+
+describe('Cuota — pagos a cuenta (ADR-010)', () => {
+  it('🔴 una pendiente con pagos a cuenta dice cuánto falta, sigue ofreciendo cobrar, y muestra el pagado y el saldo', async () => {
+    const api = base(CUOTA_CON_PAGOS_A_CUENTA)
+    api.responder('GET /api/cobros', json(COBROS_A_CUENTA))
+    montar(CUOTA_CON_PAGOS_A_CUENTA)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+
+    // El estado en el encabezado y en los datos: «Pendiente · saldo $ X».
+    expect(screen.getAllByText('Pendiente')).toHaveLength(2)
+    expect(screen.getAllByText('· saldo $ 162.500,50')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'Cobrar' })).toHaveAttribute('href', '/cuotas/35/cobrar')
+    const datos = screen.getByText('Datos de la cuota').closest('[data-slot="card"]') as HTMLElement
+    expect(within(datos).getByText('Pagado a cuenta').nextSibling).toHaveTextContent('$ 300.000,00')
+    const lineas = screen.getByText('Qué incluye').closest('[data-slot="card"]') as HTMLElement
+    expect(within(lineas).getByText('Total').closest('tr')).toHaveTextContent('$ 462.500,50')
+    expect(within(lineas).getByText('Pagado a cuenta').closest('tr')).toHaveTextContent('$ 300.000,00')
+    expect(within(lineas).getByText('Saldo').closest('tr')).toHaveTextContent('$ 162.500,50')
+  })
+
+  it('🔴 lista los cobros de la cuota (los ids de `cobros`, no el anulado) con enlace al cobro, la fecha y lo que aplicó cada uno', async () => {
+    const api = base(CUOTA_CON_PAGOS_A_CUENTA)
+    api.responder('GET /api/cobros', json(COBROS_A_CUENTA))
+    montar(CUOTA_CON_PAGOS_A_CUENTA)
+
+    const tarjeta = (await screen.findByText('Pagos recibidos')).closest('[data-slot="card"]') as HTMLElement
+    const filas = within(tarjeta).getAllByRole('row')
+    expect(filas).toHaveLength(3)
+    expect(within(filas[1]).getByRole('link', { name: 'Cobro del 14-11-2026' })).toHaveAttribute('href', '/cobros/45')
+    expect(filas[1]).toHaveTextContent('$ 200.000,00')
+    expect(within(filas[2]).getByRole('link', { name: 'Cobro del 20-11-2026' })).toHaveAttribute('href', '/cobros/46')
+    expect(filas[2]).toHaveTextContent('$ 100.000,00')
+    expect(filas[2]).toHaveTextContent('$ 103.250,00')
+  })
+
+  it('si no se pudieron traer los cobros, igual enlaza cada uno por su número', async () => {
+    const api = base(CUOTA_CON_PAGOS_A_CUENTA)
+    api.responder('GET /api/cobros', error(500, 'Falló.'))
+    montar(CUOTA_CON_PAGOS_A_CUENTA)
+
+    expect(await screen.findByRole('link', { name: 'Cobro 45' })).toHaveAttribute('href', '/cobros/45')
+    expect(screen.getByRole('link', { name: 'Cobro 46' })).toHaveAttribute('href', '/cobros/46')
+  })
+
+  it('una pendiente sin pagos no muestra saldo ni la tarjeta de pagos, y una cobrada de un solo cobro enlaza sin lista', async () => {
+    base(CUOTA_PENDIENTE)
+    montar(CUOTA_PENDIENTE)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+    expect(screen.queryByText(/· saldo/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Pagos recibidos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pagado a cuenta')).not.toBeInTheDocument()
+  })
+
+  it('una cobrada de un solo cobro enlaza al cobro y no muestra la lista de pagos', async () => {
+    base(CUOTA_COBRADA)
+    montar(CUOTA_COBRADA)
+    expect(await screen.findByRole('link', { name: 'Cobrada el 14-11-2026: ver el cobro' })).toBeInTheDocument()
+    expect(screen.queryByText('Pagos recibidos')).not.toBeInTheDocument()
+    expect(screen.queryByText(/· saldo/)).not.toBeInTheDocument()
+  })
+
+  it('🔴 una cobrada en partes enlaza al último cobro y lista todos los pagos', async () => {
+    const enPartes = { ...CUOTA_COBRADA, cobro_id: 46, cobros: [45, 46] }
+    const api = base(enPartes)
+    api.responder('GET /api/cobros', json(COBROS_A_CUENTA.map((c) => ({ ...c, cuota_id: enPartes.id }))))
+    montar(enPartes)
+
+    expect(await screen.findByRole('link', { name: 'Cobrada el 20-11-2026: ver el cobro' })).toHaveAttribute('href', '/cobros/46')
+    expect(screen.getByText('Pagos recibidos')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Cobro del 14-11-2026' })).toHaveAttribute('href', '/cobros/45')
+  })
+
+  it('anular una con pagos a cuenta avisa que primero hay que anularlos, el más nuevo primero, y muestra el rechazo del servidor', async () => {
+    const user = userEvent.setup()
+    const api = base(CUOTA_CON_PAGOS_A_CUENTA)
+    api.responder('GET /api/cobros', json(COBROS_A_CUENTA))
+    api.responder('POST /api/cuotas/35/anular', error(409, 'La cuota tiene pagos a cuenta: anulalos primero.'))
+    montar(CUOTA_CON_PAGOS_A_CUENTA)
+    await screen.findByRole('heading', { name: 'Cuota de noviembre 2026' })
+
+    await user.click(boton('Anular')!)
+    const dialogo = await screen.findByRole('dialog')
+    expect(within(dialogo).getByText(/ya tiene pagos a cuenta, antes hay que anularlos, empezando por el más nuevo/)).toBeInTheDocument()
+    await user.type(within(dialogo).getByLabelText('Motivo'), 'Error')
+    await user.click(within(dialogo).getByRole('button', { name: 'Anular cuota' }))
+    expect(await within(dialogo).findByRole('alert')).toHaveTextContent('anulalos primero')
   })
 })
 

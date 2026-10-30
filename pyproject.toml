@@ -28,7 +28,8 @@ dependencies = [
     # v1.198.0 -> v1.199.0 (2026-10-27): el producto puede impedir la baja de un cliente (impide_desactivar). Sin migracion.
     # v1.199.0 -> v1.200.0 (2026-10-27): el respaldo nocturno distingue fallo de no corrio (addendum ADR-075). Sin migracion.
     # v1.200.0 -> v1.206.0 (2026-10-30): la marca de la instancia y sus Términos propios (ADR-092 y ADR-093, marca blanca). Sin migracion.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.206.0",
+    # v1.206.0 -> v1.207.0 (2026-10-30): el index.html sale con la marca de la instancia (ADR-095) y el resguardo lleva el nombre de la marca (ADR-094). Sin migracion.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.207.0",
 ]
 
 [project.optional-dependencies]

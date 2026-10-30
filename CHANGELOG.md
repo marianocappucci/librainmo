@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- **Marca blanca** (ADR-012; `libracore` v1.206.0, `libraauth` v0.57.0, `libra-ui` v0.185.0): la instancia puede llevar el nombre, el logo, el color y los Términos y Condiciones propios de un revendedor (`/api/marca`, `/manifest.webmanifest`). Con marca propia exige los términos del revendedor y nunca cae a los de la familia; el mail de recuperación sale con su nombre. Sin marca cargada no cambia nada. Se carga desde el backoffice (feature `marca`). Variable a definir en una instancia de revendedor: `LIBRAINMO_RESET_URL_BASE`.
 - **Pago a cuenta de una cuota** (ADR-010, revisión `0007`): `POST /api/cuotas/{id}/cobrar` acepta `importe`; lo pagado va primero al punitorio adeudado y el resto, en proporción, al alquiler y a los conceptos. La cuota sigue pendiente con su saldo (`pagado`, `saldo` y `cobros` en la cuota; `pagado`, `saldo` y `punitorio_arrastrado` en la propuesta), el punitorio corre sobre lo que falta y se anula el pago más nuevo primero.
 - **Liquidación con neto negativo** (ADR-011, revisión `0007`): se emite `deudora`, no se paga y la próxima del propietario la descuenta como ítem `saldo` (`saldo_anterior`), dejándola `saldada`.
 - **La barra de estado del pie** (libracore ADR-075, libra-ui ADR-083), la misma de los otros ocho: `GET /api/estado-del-sistema` para cualquier rol, con el usuario, la versión y el último respaldo (el respaldo, sólo el admin); el layout la prende con `barraDeEstado: true`. Sin ARCA ni LibraEdge, esos bloques salen `null`. Test: `tests/test_estado_del_sistema.py`.

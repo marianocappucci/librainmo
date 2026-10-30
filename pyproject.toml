@@ -16,7 +16,8 @@ dependencies = [
     # para correr la cadena de `libraauth` (`libraauth-migrar`), que versiona
     # sus propias tablas.
     # v0.55.0 -> v0.56.0 (2026-10-28): `verificar_captcha` publica para rutas propias del producto (ADR-029). Sin migracion.
-    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.56.0",
+    # v0.56.0 -> v0.57.0 (2026-10-30): Términos propios de la instancia y textos de marca en el reseteo (ADR-030, marca blanca). Sin migracion.
+    "libraauth[migrations] @ git+https://github.com/marianocappucci/libraauth.git@v0.57.0",
     # El motor común. Acá el schema de `libracore`
     # (clientes, facturas, libro de terceros, recibos, índices de ajuste) vive en
     # la MISMA base que el dominio (ADR-002). `python -m app.migrar` corre su
@@ -26,7 +27,8 @@ dependencies = [
     # v1.197.3 -> v1.198.0 (2026-10-27): la moneda del libro de terceros y del recibo (ADR-088). Migracion 0031 aditiva.
     # v1.198.0 -> v1.199.0 (2026-10-27): el producto puede impedir la baja de un cliente (impide_desactivar). Sin migracion.
     # v1.199.0 -> v1.200.0 (2026-10-27): el respaldo nocturno distingue fallo de no corrio (addendum ADR-075). Sin migracion.
-    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.200.0",
+    # v1.200.0 -> v1.206.0 (2026-10-30): la marca de la instancia y sus Términos propios (ADR-092 y ADR-093, marca blanca). Sin migracion.
+    "libracore @ git+https://github.com/marianocappucci/libracore.git@v1.206.0",
 ]
 
 [project.optional-dependencies]

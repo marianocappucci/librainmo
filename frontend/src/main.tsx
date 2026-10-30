@@ -6,6 +6,7 @@ import './index.css'
 import { aplicarIdentidad } from 'libra-ui/identidad'
 import { ErrorBoundary } from 'libra-ui/ErrorBoundary'
 import { instalarReporteDeErrores } from 'libra-ui/errores-del-navegador'
+import { cargarMarca } from 'libra-ui/marca'
 import { cargarTema } from 'libra-ui/tema'
 
 // La identidad del producto (libra-ui ADR-033 y ADR-096): el acento lima (botón principal, ítem activo del menú, foco), el `theme-color` y
@@ -23,12 +24,16 @@ instalarReporteDeErrores()
 const raiz = document.getElementById('root')
 if (!raiz) throw new Error('falta #root en index.html')
 
-createRoot(raiz).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </ErrorBoundary>
-  </StrictMode>,
+// La marca de la instancia (libra-ui ADR-098, marca blanca): si el revendedor cargó la suya, se aplica antes de pintar, así la primera visita
+// no parpadea con el nombre del producto. Espera como mucho 2 s y nunca falla: sin marca propia la app arranca como siempre.
+void cargarMarca().finally(() =>
+  createRoot(raiz).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </ErrorBoundary>
+    </StrictMode>,
+  ),
 )

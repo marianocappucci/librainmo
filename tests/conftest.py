@@ -64,6 +64,8 @@ def _config_de_libracore_aislada(tmp_path, monkeypatch):
     monkeypatch.setattr(config_manager, "CONFIG_PATH", str(tmp_path / "config.json"))
     # Lo mismo con el logo de la empresa: sin esto un test que lo sube lo deja en `./logos`.
     monkeypatch.setattr(config_manager, "LOGO_DIR", str(tmp_path / "logos"))
+    # La marca de la instancia (logo y Términos propios, ADR-092/093) también vive en disco.
+    monkeypatch.setattr(config_manager, "MARCA_DIR", str(tmp_path / "marca"))
 
 
 @pytest.fixture(autouse=True)

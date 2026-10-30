@@ -35,12 +35,14 @@ from libracore.config_router import (
 from libracore.db import core as libracore_core
 from libracore.estado_del_sistema import build_estado_del_sistema_router
 from libracore.indices_ajuste import INDICES, IndiceFaltante
+from libracore.marca_router import build_marca_admin_router, build_marca_router, es_marca_propia, nombre_de_marca
 from libracore.modules_gate import require_module
 from libracore.resguardo_enlace import build_resguardo_enlace_router
 from libracore.respaldo import Instancia
 from libracore.security_headers import CSP_SPA, SecurityHeadersMiddleware
 from libracore.smtp_router import build_smtp_probe_router
 from libracore.tema_router import build_tema_admin_router, build_tema_router
+from libracore.terminos_propios import leer_terminos_propios
 
 from app import db
 from app.auditoria import COLUMNAS_OCULTAS, etiqueta_segura
@@ -54,6 +56,7 @@ from app.auth import (
 )
 from app.config import Config
 from app.errores import ErrorDeDominio
+from app.frontend_dist import frontend_dist
 from app.modulos import ModuleRepository, exigir_modulo
 from app.roles import OPERADOR, ROLES, TODOS
 from app.routers import auth as auth_router
@@ -166,7 +169,12 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # Términos y Condiciones: la prueba de la aceptación y lo que enciende el
     # gate. 🔴 Sin esta línea el gate NO corta y la instancia no falla: se
     # queda sin gate, en silencio. Por eso hay un test que lo prueba.
-    app.state.terminos = TerminosRepository(sesiones)
+    #
+    # Marca blanca (ADR-092/093 del motor): una instancia con marca propia **exige** los Términos de su revendedor
+    # y, sin ellos, queda frenada; nunca cae a los de la familia.
+    app.state.terminos = TerminosRepository(
+        sesiones, contrato_propio=leer_terminos_propios, exigir_propio=es_marca_propia
+    )
 
     # Se agrega **al final** a propósito: en Starlette el último middleware
     # agregado es el más externo, así envuelve todas las respuestas, incluidas
@@ -192,6 +200,11 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     # cambia el admin o el backoffice. Sin esto la SPA pide `/api/tema` y recibe un 404 en cada carga.
     app.include_router(build_tema_router())
     app.include_router(build_tema_admin_router(), dependencies=[Depends(require_admin_o_servicio_o_panel)])
+    # La marca de la instancia (nombre, logo, color, íconos y manifest), para venderla a marca blanca. La lectura es
+    # pública (el login también lleva la marca) y va **antes** del catch-all de la SPA (`asgi.py`): si no,
+    # `/manifest.webmanifest` devolvería el `index.html`. Escribir es del admin o del backoffice (token de servicio).
+    app.include_router(build_marca_router(dist=frontend_dist()))
+    app.include_router(build_marca_admin_router(), dependencies=[Depends(require_admin_o_servicio_o_panel)])
     app.include_router(auth_router.construir_router())
 
     # Los códigos de acceso de la demo pública: se emiten desde el backoffice y los consume `POST /auth/demo`.
@@ -214,7 +227,8 @@ def crear_app(config: Config | None = None, *, sembrar_admin: bool = True) -> Fa
     )
     app.state.password_reset = PasswordResetService(
         sesiones,
-        product_name="LibraInmo",
+        # CALLABLE: con marca propia el mail de recuperación sale con el nombre del revendedor.
+        product_name=lambda: nombre_de_marca("LibraInmo"),
         reset_url_base=os.environ.get("LIBRAINMO_RESET_URL_BASE", "https://dev.librainmo.com.ar/reset-password"),
         # CALLABLE, no un valor: se resuelve en cada envío. Con uno fijo, guardar el SMTP por pantalla no tendría
         # efecto hasta recrear el contenedor.

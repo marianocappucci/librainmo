@@ -257,3 +257,24 @@ debe a la inmobiliaria y no había cómo seguir.
 5. Anular la que absorbió vuelve la otra a `deudora`; una `saldada` no se anula sin anular primero la que la absorbió.
 6. 🔴 Los ítems `saldo` quedan fuera de la subconsulta de asientos ya liquidados: un `NULL` adentro de `NOT IN` deja
    afuera a todo. Revisión `0007`.
+
+
+## ADR-012 — La marca blanca: la instancia puede llevar el nombre, el logo, el color y los términos de un revendedor
+
+**Estado:** aceptada (2026-10-30). Primer producto cableado del piloto de marca blanca (libracore ADR-092 y ADR-093,
+libraauth ADR-030, libra-ui ADR-098).
+
+**Decisión.**
+1. `app/main.py` monta `build_marca_router(dist=…)` (lectura pública, manifest e íconos) y `build_marca_admin_router()`
+   detrás de `require_admin_o_servicio_o_panel`, igual que el tema: lo cambia el admin o el backoffice.
+2. 🔴 `TerminosRepository(contrato_propio=leer_terminos_propios, exigir_propio=es_marca_propia)`: con marca propia la
+   instancia **exige** los términos del revendedor y, sin ellos, queda frenada; nunca cae a los de la familia.
+3. `PasswordResetService(product_name=lambda: nombre_de_marca("LibraInmo"))`: el mail de recuperación sale con el nombre
+   de la marca.
+4. El manifest tiene que ganarle al catch-all de la SPA, así que `app/frontend_dist.py` resuelve el dist una sola vez y lo
+   usan `main.py` (para el manifest de respaldo) y `asgi.py` (para servirlo).
+5. `main.tsx` espera `cargarMarca()` (tope de 2 s, no falla) antes de montar la SPA.
+
+**Pendiente a propósito.** `LIBRAINMO_RESET_URL_BASE` tiene por defecto `dev.librainmo.com.ar`: una instancia de
+revendedor tiene que definirla o el enlace de recuperación apunta al dominio equivocado. Tests:
+`tests/test_marca_blanca.py` y `tests/test_marca_blanca_terminos.py`.
